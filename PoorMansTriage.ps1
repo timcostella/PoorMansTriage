@@ -1,8 +1,8 @@
 ### Poor Man's Triage
-### Version: 0.5.8
+### Version: 0.5.9
 ### Created: 08/04/2022
-### Create By: Tim Costella
-### Last Revised: 08/09/2022
+### Created By: Tim Costella
+### Last Revised: 06/13/2026
 
 ## Check if running as an admin, alot of the functionality requrires running as admin
 #Requires -RunASAdministrator
@@ -211,6 +211,10 @@ Function Get-HashesOfExes
 }
 
 
+## Get PowerShell History
+$PowerShellHistory = Get-Content (Get-PSReadlineOption).HistorySavePath
+
+
 ## Directory to save our work
 $WorkingDirectory  = "C:\PoorMansTriageOutput" 
  
@@ -245,6 +249,9 @@ $DNSDomain =  $SysInfo.Domain
 ## Where to save the primary output file
 $OutputFile = "$WorkingDirectory\$env:ComputerName-$DNSDomain-$FileNameDate-Triage.log"
 
+## Where to save the list of installed devices
+$OutputFile_InstalledDevices = "$WorkingDirectory\$env:ComputerName-$DNSDomain-$FileNameDate-Triage-InstalledDevices.csv"
+
 ## Where to save the complete network interface info
 $OutputFile_NICs = "$WorkingDirectory\$env:ComputerName-$DNSDomain-$FileNameDate-Triage-NICs.csv"
 
@@ -265,6 +272,9 @@ $ProcessHashesPath = "$WorkingDirectory\$env:ComputerName-$DNSDomain-$FileNameDa
 
 ## where to save the startup commands
 $StartupCmdsPath = "$WorkingDirectory\$env:ComputerName-$DNSDomain-$FileNameDate-Triage-StartupCmd.csv"
+
+## where to save the powershel history 
+$PowerShellHistoryPath = "$WorkingDirectory\$env:ComputerName-$DNSDomain-$FileNameDate-Triage-PowerShellHistory.txt"
 
 ## where to save the startup command hashes 
  $StartupCmdHashesPath = "$WorkingDirectory\$env:ComputerName-$DNSDomain-$FileNameDate-Triage-StartupCmdHashes.csv"
@@ -338,11 +348,54 @@ $TotalMemoryGB = [Math]::Round($SysInfo.TotalPhysicalMemory/1GB)
 "TOTAL LOGICAL PROCESSORS: $($SysInfo.NumberOfLogicalProcessors) OR $($CPUs.NumberOfLogicalProcessors)" | Tee-Object -FilePath $OutputFile -Append
 "BIOS SERIAL NUMBER: $($BiosInfo.SerialNumber)" | Tee-Object -FilePath $OutputFile -Append
 "OS NAME: $($OS.Caption)" | Tee-Object -FilePath $OutputFile -Append
+"OS INSTALL DATE: $($OS.InstallDate)" | Tee-Object -FilePath $OutputFile -Append
 "OS VERSION: $($OS.Version)" | Tee-Object -FilePath $OutputFile -Append
 "OS ARCHITECTURE: $($OS.OSArchitecture)" | Tee-Object -FilePath $OutputFile -Append
 "OS LAST BOOT TIME: $($OS.LastBootUpTime)" | Tee-Object -FilePath $OutputFile -Append
 "OS LAST PATCH INSTALLED: $LastHotfixInstalled" | Tee-Object -FilePath $OutputFile -Append
 
+### Get Clipboard Content
+"`n`n" | Tee-Object -FilePath $OutputFile -Append
+"CLIPBOARD CONTENT: ******************************"  | Tee-Object -FilePath $OutputFile -Append
+try 
+    {
+        Get-Clipboard | Tee-Object -FilePath $OutputFile -Append
+    }
+catch
+    {
+        "Unable to get clipboard content, likely because the script is running in a non-interactive session (e.g. as SYSTEM or via psexec) or there is no clipboard content." | Tee-Object -FilePath $OutputFile -Append
+    }
+
+### Get PowerShell History
+"`n`n" | Tee-Object -FilePath $OutputFile -Append
+"POWERSHELL HISTORY: ******************************"  | Tee-Object -FilePath $OutputFile -Append
+$PowerShellHistory | Tee-Object -FilePath $OutputFile -Append
+$PowerShellHistory | Export-Csv -Path $PowerShellHistoryPath -Delimiter "," -NoTypeInformation
+
+
+### Get Antivirus Status
+"`n`n" | Tee-Object -FilePath $OutputFile -Append
+"ANTIVIRUS STATUS: *********************" | Tee-Object -FilePath $OutputFile -Append
+Get-MpComputerStatus | Select-Object -Property AntivirusEnabled, RealTimeProtectionEnabled, AMServiceEnabled, NISProtectionEnabled, AntivirusSignatureLastUpdated, AntivirusSignatureVersion | Tee-Object -FilePath $OutputFile -Append 
+
+### Get Kerberos Tickets
+"`n`n" | Tee-Object -FilePath $OutputFile -Append
+"KERBEROS TICKETS: ******************************"  | Tee-Object -FilePath $OutputFile -Append
+try 
+    {
+        klist tickets | Tee-Object -FilePath $OutputFile -Append
+    }
+catch
+    {
+        "Unable to get kerberos tickets, likely because the script is running in a non-interactive session (e.g. as SYSTEM or via psexec)." | Tee-Object -FilePath $OutputFile -Append
+    }   
+
+### Get installed devices
+"`n`n" | Tee-Object -FilePath $OutputFile -Append
+"INSTALLED DEVICES: ******************************"  | Tee-Object -FilePath $OutputFile -Append
+$InstalledDevices = Get-CimInstance Win32_PnPEntity 
+$InstalledDevices | Select-Object Name, DeviceID, Manufacturer, Status | Sort-Object -Property Name, Manufacturer | Format-List | Tee-Object -FilePath $OutputFile -Append
+$InstalledDevices | Select-Object -Property * | Sort-Object -Property Name, Manufacturer | Export-Csv -Path $OutputFile_InstalledDevices -Delimiter "," -NoTypeInformation
 
 ### Get Mounted Devices
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
@@ -392,8 +445,16 @@ Get-Content "C:\Windows\system32\drivers\etc\hosts" | Tee-Object -FilePath $Outp
 ### Get DNS Information
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "DNS SERVERS: ******************************" | Tee-Object -FilePath $OutputFile -Append
-Get-DnsClientServerAddress  | Select-Object -Property InterfaceAlias, InterfaceIndex, AddressFamily, ServerAddresses | Sort-Object -Property InterfaceAlias, AddressFamily | Tee-Object -FilePath $OutputFile -Append
-Get-DnsClientServerAddress  | Select-Object -Property * | Sort-Object -Property InterfaceAlias, AddressFamily | Export-Csv -Path $OutputFile_DNS
+$ClientServerAddresses = Get-DnsClientServerAddress  
+$ClientServerAddresses | Select-Object -Property InterfaceAlias, InterfaceIndex, AddressFamily, ServerAddresses | Sort-Object -Property InterfaceAlias, AddressFamily | Format-Table -AutoSize | Tee-Object -FilePath $OutputFile -Append
+$ClientServerAddresses | Select-Object -Property InterfaceAlias, InterfaceIndex, AddressFamily, ServerAddresses | Sort-Object -Property InterfaceAlias, AddressFamily | Format-Table -AutoSize | Tee-Object -FilePath $OutputFile -Append
+| Select-Object -Property * | Sort-Object -Property InterfaceAlias, AddressFamily | Export-Csv -Path $OutputFile_DNS
+
+### Get DNS Client Cache
+"`n`n" | Tee-Object -FilePath $OutputFile -Append
+"DNS CLIENT CACHE: ******************************" | Tee-Object -FilePath $OutputFile -Append
+$DNSClientCache = Get-DnsClientCache 
+$DNSClientCache | Select-Object -Property Name, RecordType, TimeToLive, Data | Sort-Object -Property Name, RecordType | Format-Table -AutoSize | Tee-Object -FilePath $OutputFile -Append
 
 ### Get ARP Cache
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
@@ -404,6 +465,18 @@ Get-NetNeighbor | Sort-Object -Property ifIndex, IpAddress, LinkLayerAddress | F
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "NETWORK ROUTES: ***************************" | Tee-Object -FilePath $OutputFile -Append
 Get-NetRoute | Sort-Object DestinationPrefix | Tee-Object -FilePath $OutputFile -Append
+
+### Get Listening Ports
+"`n`n" | Tee-Object -FilePath $OutputFile -Append
+"LISTENING PORTS: ***************************" | Tee-Object -FilePath $OutputFile -Append
+$TCPConnections = Get-NetTCPConnection
+$TCPConnections | Select-Object -Property LocalAddress, LocalPort, RemoteAddress, RemotePort, OwningProcess, State, @{Name="ProcessName";Expression={Get-Process -id $_.OwningProcess | Select -ExpandProperty Path}}, @{Name="ProcessDescription";Expression={Get-Process -id $_.OwningProcess | Select-Object -ExpandProperty Description}} | Format-List  | Tee-Object -FilePath $OutputFile -Append
+
+### Get Listening Ports that have a remote address connected (i.e. not just listening locally)
+"`n`n" | Tee-Object -FilePath $OutputFile -Append
+"PORTS LISTEN FOR REMOTE CONNECTIONS: ***************************" | Tee-Object -FilePath $OutputFile -Append
+$TCPConnections | Where-Object {$_.RemoteAddress -ne "0.0.0.0" -and $_.RemoteAddress -ne "127.0.0.1"} | Select-Object -Property LocalAddress, LocalPort, RemoteAddress, RemotePort, OwningProcess, State, @{Name="ProcessName";Expression={Get-Process -id $_.OwningProcess | Select -ExpandProperty Path}}, @{Name="ProcessDescription";Expression={Get-Process -id $_.OwningProcess | Select -ExpandProperty Description}} | Format-List | Tee-Object -FilePath $OutputFile -Append
+
 
 ### Get Wireless Networks From Registry
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
@@ -457,12 +530,10 @@ Foreach ($LocalGroup in $LocalGroups)
 $UserProfiles = Get-CimInstance -ClassName Win32_UserProfile
 $UserProfiles | Select-Object -Property SID, LocalPath, LastUseTime | Format-Table | Tee-Object -FilePath $OutputFile -Append
 
-
 ### Get local profiles in registry
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "LOCAL PROFILES IN REGISTRY: ***********************" | Tee-Object -FilePath $OutputFile -Append
 Get-ChildItem -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList" | Select-Object -ExpandProperty PSChildName | Tee-Object -FilePath $OutputFile -Append
-
 
 ### Get patch (hotfix) info
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
@@ -488,15 +559,12 @@ $Software | Tee-Object -FilePath $OutputFile -Append
 ### Get environment variables
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "OS ENVIRONMENTAL VARIABLES: **************" | Tee-Object -FilePath $OutputFile -Append
-Get-ChildItem -Path Env:\ | Select-Object -Property Name, Value | Sort-Object -Property Name  | Tee-Object -FilePath $OutputFile -Append
-
-## Need to add envornment variables for the system and each user, but that is a bit more work, so will add in a later version
+Get-ChildItem -Path Env:\ | Select-Object -Property Name, Value | Sort-Object -Property Name  | Format-List | Tee-Object -FilePath $OutputFile -Append
 
 ### Get logged on users
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "LOGGED IN USERS: *************************" | Tee-Object -FilePath $OutputFile -Append
 C:\windows\System32\qwinsta.exe | Tee-Object -FilePath $OutputFile -Append
-
 
 ### Get SMB shares
 $Shares = Get-SmbShare
@@ -525,6 +593,11 @@ $RegKeys = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersi
 $RegKeys | Tee-Object -FilePath $OutputFile -Append
 $AllRegKeys += $RegKeys
 Start-Process -FilePath "C:\windows\System32\reg.exe" -ArgumentList "export HKLM\Software\Microsoft\Windows\CurrentVersion\RunOnce $WorkingDirectory\HKLM_RunOnce.reg /y"
+
+### Get Named Pipes
+"`n`n" | Tee-Object -FilePath $OutputFile -Append
+"NAMED PIPES: ******************************" | Tee-Object -FilePath $OutputFile -Append
+[System.IO.Directory]::GetFiles("\\.\\pipe\\") | Sort-Object | Tee-Object -FilePath $OutputFile -Append
 
 ### Get HKU Registry entries
 $InterestingRegKeys=@("SOFTWARE\Microsoft\Windows\CurrentVersion\Run", "SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce", "software\microsoft\Software\Microsoft\InternetExplorer\TypedURLs", "software\microsoft\windows\currentversion\explorer\typedpaths")
@@ -743,12 +816,6 @@ if(Test-Path -Path $ZippedEventLogsPath )
 
 
 ### Get Windows Firewall Status
-
-### Get Antivirus enabled
-
-### Get Antivirus Definition Date
-
-### Get Antivirus version
 
 
 ### Get GPRESULTS
