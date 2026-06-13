@@ -212,8 +212,8 @@ Function Get-HashesOfExes
 
 
 ## Directory to save our work
-$WorkingDirectory  = "C:\Test2"
-
+$WorkingDirectory  = "C:\PoorMansTriageOutput" 
+ 
 ##Check if working directory exists, if not create it
 if(-not (Test-Path -Path $WorkingDirectory))
     {
@@ -309,18 +309,29 @@ $TimeZone =  Get-TimeZone | Select-Object -ExpandProperty ID
 ### Script Information (Script Name, Who Ran It)
 "SCRIPT INFO:******************************"  | Tee-Object -FilePath $OutputFile -Append
 "SCRIPT: $PSCommandPath"  | Tee-Object -FilePath $OutputFile -Append
-"SCRIPT RUN BY: $($env:UserDomain)\$($env:UserName)" | Tee-Object -FilePath $OutputFile -Append
+"SCRIPT RUN BY (UserDomain\UserName): $($env:UserDomain)\$($env:UserName)" | Tee-Object -FilePath $OutputFile -Append
+$FileDate = Get-Date -Format "MM/dd/yy hh:mm:ss tt"
+"SCRIPT RUN DATE/TIME: $FileDate $TimeZone"    | Tee-Object -FilePath $OutputFile -Append
+
+### Show whether run by admin or not
+$UserObj = [Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
+if ($UserObj.IsInRole([Security.Principal.WindowsBuiltInRole]::"Administrator"))
+    {
+        "SCRIPT RUNNING AS ADMIN: YES" | Tee-Object -FilePath $OutputFile -Append
+    }
+else 
+    {
+        "SCRIPT RUNNING AS ADMIN: NO" | Tee-Object -FilePath $OutputFile -Append
+    }
+
 
 ### Get system info
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "SYSTEM INFO: ******************************"  | Tee-Object -FilePath $OutputFile -Append
-$FileDate = Get-Date -Format "MM/dd/yy hh:mm:ss tt"
-"DATE: $FileDate $TimeZone"    | Tee-Object -FilePath $OutputFile -Append
 "SYSTEM: $env:ComputerName.$DNSDomain" | Tee-Object -FilePath $OutputFile -Append
 "MANUFACTURER AND MODEL: $($SysInfo.Manufacturer) - $($SysInfo.Model)" | Tee-Object -FilePath $OutputFile -Append
 "PROCESSOR MANUFACTURER AND MODEL: $($CPUs.Manufacturer) - $($CPUs.Name)" | Tee-Object -FilePath $OutputFile -Append
 "SYSTEM OWNER: $($SysInfo.PrimaryOwnerName)" | Tee-Object -FilePath $OutputFile -Append
-
 $TotalMemoryGB = [Math]::Round($SysInfo.TotalPhysicalMemory/1GB)
 "TOTAL MEMORY GBs: $TotalMemoryGB" | Tee-Object -FilePath $OutputFile -Append
 "TOTAL PROCESSORS: $($SysInfo.NumberOfProcessors) OR $($CPUs.NumberOfCores)" | Tee-Object -FilePath $OutputFile -Append
@@ -336,12 +347,12 @@ $TotalMemoryGB = [Math]::Round($SysInfo.TotalPhysicalMemory/1GB)
 ### Get Mounted Devices
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "MOUNTED DEVICES: *******************************"  | Tee-Object -FilePath $OutputFile -Append
-Get-Item -Path "HKLM:\SYSTEM\MountedDevices\" | Select-Object -ExpandProperty Property | Tee-Object -FilePath $OutputFile -Append
+Get-Item -Path "HKLM:\SYSTEM\MountedDevices\" | Select-Object -ExpandProperty Property | Sort-Object -Property Property | Tee-Object -FilePath $OutputFile -Append
 
 ### USB Devices that have been connected
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "USB DEVICES FROM REGISTRY: *********************"  | Tee-Object -FilePath $OutputFile -Append
-Get-ChildItem -Path "HKLM:\SYSTEM\ControlSet001\Enum\USBSTOR\" | Get-ChildItem | Get-ItemProperty -Name FriendlyName -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FriendlyName  | Tee-Object -FilePath $OutputFile -Append
+Get-ChildItem -Path "HKLM:\SYSTEM\ControlSet001\Enum\USBSTOR\" | Get-ChildItem | Get-ItemProperty -Name FriendlyName -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FriendlyName  | Sort-Object -Property FriendlyName | Tee-Object -FilePath $OutputFile -Append
 Start-Process -FilePath "C:\windows\System32\reg.exe" -ArgumentList "export HKLM\SYSTEM\ControlSet001\Enum\USBSTOR $WorkingDirectory\HKLM_USBSTOR.reg /y"
 
 ### Get Disk Info
@@ -360,8 +371,7 @@ $DisksObjs | Select-Object -Property Name, VolumeName, VolumeSerialNumber, Size,
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "DISK PARTITION INFO: *****************************"  | Tee-Object -FilePath $OutputFile -Append
 $Partitions = Get-Partition
-$Partitions | Select-Object -Property DiskNumber, PartitionNumber, Size, Type, DriveLetter, IsBoot, IsSystem, IsHidden | Format-Table | Tee-Object -FilePath $OutputFile -Append
-
+$Partitions | Select-Object -Property DiskNumber, PartitionNumber, Size, Type, DriveLetter, IsBoot, IsSystem, IsHidden | Sort-Object -Property DiskNumber, PartitionNumber | Format-Table | Tee-Object -FilePath $OutputFile -Append
 
 ### Get system proxy info
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
@@ -371,7 +381,7 @@ netsh winhttp show proxy | Tee-Object -FilePath $OutputFile -Append
 ### Get nic info
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "NETWORK INFO: *****************************"  | Tee-Object -FilePath $OutputFile -Append
-Get-NetIPAddress | Select-Object -Property IPAddress, InterfaceAlias | Tee-Object -FilePath $OutputFile -Append
+Get-NetIPAddress | Select-Object -Property IPAddress, InterfaceAlias | Sort-Object -Property InterfaceAlias | Tee-Object -FilePath $OutputFile -Append
 Get-NetIPAddress | Export-Csv -Path $OutputFile_NICs
 
 ### Get host file content
@@ -382,13 +392,13 @@ Get-Content "C:\Windows\system32\drivers\etc\hosts" | Tee-Object -FilePath $Outp
 ### Get DNS Information
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "DNS SERVERS: ******************************" | Tee-Object -FilePath $OutputFile -Append
-Get-DnsClientServerAddress | Select-Object -Property InterfaceAlias, ServerAddresses | Tee-Object -FilePath $OutputFile -Append
-Get-DnsClientServerAddress | Select-Object -Property * | Export-Csv -Path $OutputFile_DNS
+Get-DnsClientServerAddress  | Select-Object -Property InterfaceAlias, InterfaceIndex, AddressFamily, ServerAddresses | Sort-Object -Property InterfaceAlias, AddressFamily | Tee-Object -FilePath $OutputFile -Append
+Get-DnsClientServerAddress  | Select-Object -Property * | Sort-Object -Property InterfaceAlias, AddressFamily | Export-Csv -Path $OutputFile_DNS
 
 ### Get ARP Cache
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "ARP CACHE: *******************************" | Tee-Object -FilePath $OutputFile -Append
-Get-NetNeighbor | Format-Table ifIndex, IpAddress, LinkLayerAddress | Tee-Object -FilePath $OutputFile -Append
+Get-NetNeighbor | Sort-Object -Property ifIndex, IpAddress, LinkLayerAddress | Format-Table | Tee-Object -FilePath $OutputFile -Append
 
 ### Get Routing Table
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
@@ -405,19 +415,19 @@ Start-Process -FilePath "C:\windows\System32\reg.exe" -ArgumentList "export HKLM
 ### Get local users
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "LOCAL USERS: ******************************" | Tee-Object -FilePath $OutputFile -Append
-Get-LocalUser | Select-Object -Property Name, SID, Enabled, LastLogon, PasswordLastSet | Format-Table | Tee-Object -FilePath $OutputFile -Append
-Get-LocalUser | Select-Object -Property * | Export-Csv -Path $OutputFile_LocalUsers
+Get-LocalUser | Select-Object -Property Name, SID, Enabled, LastLogon, PasswordLastSet | Sort-Object -Property Name | Format-Table | Tee-Object -FilePath $OutputFile -Append
+Get-LocalUser | Select-Object -Property * | Sort-Object -Property Name | Export-Csv -Path $OutputFile_LocalUsers
 
 ### Get local groups
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "LOCAL GROUPS: ******************************" | Tee-Object -FilePath $OutputFile -Append
-$LocalGroups = Get-LocalGroup
-$LocalGroups | Select-Object -Property Name, SID | Tee-Object -FilePath $OutputFile -Append
-$LocalGroups | Select-Object -Property * | Export-Csv -Path $OutputFile_LocalGroups
+$LocalGroups = Get-LocalGroup | Sort-Object -Property Name 
+$LocalGroups | Select-Object -Property Name, SID | Sort-Object -Property Name | Tee-Object -FilePath $OutputFile -Append
+$LocalGroups | Select-Object -Property * | Sort-Object -Property Name | Export-Csv -Path $OutputFile_LocalGroups
 
+### Get local group members
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "LOCAL GROUP MEMBERS: ***********************" | Tee-Object -FilePath $OutputFile -Append
-### Get local group members
 Foreach ($LocalGroup in $LocalGroups)
     {
         "Group: $LocalGroup" | Tee-Object -FilePath $OutputFile -Append
@@ -468,22 +478,25 @@ Get-WinEvent -LogName Setup -MaxEvents 20 | Select-Object -Property TimeCreated,
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "INSTALLED SOFTWARE:**********************" | Tee-Object -FilePath $OutputFile -Append
 "PATH: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\" | Tee-Object -FilePath $OutputFile -Append
-$Software = Get-ChildItem -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\" | Get-ItemProperty -Name DisplayName, DisplayVersion -ErrorAction SilentlyContinue | Select-Object -Property DisplayName, DisplayVersion
+$Software = Get-ChildItem -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\" | Get-ItemProperty -Name DisplayName, DisplayVersion -ErrorAction SilentlyContinue | Select-Object -Property DisplayName, DisplayVersion | Sort-Object -Property DisplayName
 $Software | Tee-Object -FilePath $OutputFile -Append
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "PATH: HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall" | Tee-Object -FilePath $OutputFile -Append
-$Software = Get-ChildItem -Path "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall" | Get-ItemProperty -Name DisplayName, DisplayVersion -ErrorAction SilentlyContinue | Select-Object -Property DisplayName, DisplayVersion
+$Software = Get-ChildItem -Path "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall" | Get-ItemProperty -Name DisplayName, DisplayVersion -ErrorAction SilentlyContinue | Select-Object -Property DisplayName, DisplayVersion | Sort-Object -Property DisplayName
 $Software | Tee-Object -FilePath $OutputFile -Append
  
 ### Get environment variables
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "OS ENVIRONMENTAL VARIABLES: **************" | Tee-Object -FilePath $OutputFile -Append
-Get-ChildItem -Path Env:\ | Tee-Object -FilePath $OutputFile -Append
+Get-ChildItem -Path Env:\ | Select-Object -Property Name, Value | Sort-Object -Property Name  | Tee-Object -FilePath $OutputFile -Append
+
+## Need to add envornment variables for the system and each user, but that is a bit more work, so will add in a later version
 
 ### Get logged on users
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "LOGGED IN USERS: *************************" | Tee-Object -FilePath $OutputFile -Append
-& qwinsta >> $OutputFile
+C:\windows\System32\qwinsta.exe | Tee-Object -FilePath $OutputFile -Append
+
 
 ### Get SMB shares
 $Shares = Get-SmbShare
