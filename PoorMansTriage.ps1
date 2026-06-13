@@ -488,8 +488,46 @@ Start-Process -FilePath "C:\windows\System32\reg.exe" -ArgumentList "export HKLM
 ### Get local users
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "LOCAL USERS: ******************************" | Tee-Object -FilePath $OutputFile -Append
-Get-LocalUser | Select-Object -Property Name, SID, Enabled, LastLogon, PasswordLastSet | Sort-Object -Property Name | Format-Table | Tee-Object -FilePath $OutputFile -Append
-Get-LocalUser | Select-Object -Property * | Sort-Object -Property Name | Export-Csv -Path $OutputFile_LocalUsers
+$LocalUsers = Get-LocalUser 
+$LocalUsers | Select-Object -Property Name, SID, Enabled, LastLogon, PasswordLastSet | Sort-Object -Property Name | Format-Table | Tee-Object -FilePath $OutputFile -Append
+$LocalUsers | Select-Object -Property * | Sort-Object -Property Name | Export-Csv -Path $OutputFile_LocalUsers
+
+### Check if local guest is enabled
+"`n`n" | Tee-Object -FilePath $OutputFile -Append
+"CHECK LOCAL GUEST ACCOUNT: ******************************" | Tee-Object -FilePath $OutputFile -Append
+$LocalGuest = $LocalUsers | Where-Object {$_.SID -like "*-501"}
+if ($LocalGuest)
+    {
+        if ($LocalGuest.Enabled)
+            {
+                "LOCAL GUEST ACCOUNT ENABLED: YES" | Tee-Object -FilePath $OutputFile -Append
+            }
+        else 
+            {
+                "LOCAL GUEST ACCOUNT ENABLED: NO" | Tee-Object -FilePath $OutputFile -Append
+            }
+    }
+else 
+    {
+        "LOCAL GUEST ACCOUNT ENABLED: UNKNOWN (NO LOCAL ACCOUNT WITH RID 501)" | Tee-Object -FilePath $OutputFile -Append
+    }
+
+
+### Check if any local users have a blank password (this is only for local accounts, not domain accounts)
+"`n`n" | Tee-Object -FilePath $OutputFile -Append
+"CHECK LOCAL USERS FOR BLANK PASSWORDS: ******************************" | Tee-Object -FilePath $OutputFile -Append
+$LocalUsersWithBlankPasswords = $LocalUsers | Where-Object {($_.PasswordLastSet -eq $null) -and ($_.Enabled -eq $true)}
+if ($LocalUsersWithBlankPasswords)
+    {
+        "LOCAL USERS WITH BLANK PASSWORDS: YES" | Tee-Object -FilePath $OutputFile -Append
+        $LocalUsersWithBlankPasswords | Select-Object -Property Name, SID | Sort-Object -Property Name | Tee-Object -FilePath $OutputFile -Append
+    }
+else 
+    {
+        "LOCAL USERS WITH BLANK PASSWORDS: NO" | Tee-Object -FilePath $OutputFile -Append
+    }
+
+
 
 ### Get local groups
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
