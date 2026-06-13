@@ -352,6 +352,7 @@ $TotalMemoryGB = [Math]::Round($SysInfo.TotalPhysicalMemory/1GB)
 "OS VERSION: $($OS.Version)" | Tee-Object -FilePath $OutputFile -Append
 "OS ARCHITECTURE: $($OS.OSArchitecture)" | Tee-Object -FilePath $OutputFile -Append
 "OS LAST BOOT TIME: $($OS.LastBootUpTime)" | Tee-Object -FilePath $OutputFile -Append
+"OS UPTIME (DAYS): $((Get-Date) - ($OS.LastBootUpTime)).TotalDays" | Tee-Object -FilePath $OutputFile -Append
 "OS LAST PATCH INSTALLED: $LastHotfixInstalled" | Tee-Object -FilePath $OutputFile -Append
 
 ### Get Clipboard Content
@@ -592,6 +593,25 @@ Get-ChildItem -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileL
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "OS PATCHES: ******************************" | Tee-Object -FilePath $OutputFile -Append
 $Hotfixes | Sort-Object -Property InstalledOn -Descending | Select-Object -Property HotfixID, Description, Caption, InstalledOn | Tee-Object -FilePath $OutputFile -Append
+
+### Get Last Patch Date
+"`n`n" | Tee-Object -FilePath $OutputFile -Append
+"LAST PATCH DATE: ******************************" | Tee-Object -FilePath $OutputFile -Append
+$Today = Get-Date
+$LastInstalledPatch = $Hotfixes | Sort-Object -Property InstalledOn -Descending | Select-Object -First 1 -ExpandProperty InstalledOn
+$DaysSincePatched = ($Today - $LastInstalledPatch).Days
+"LAST PATCH INSTALLED: $LastInstalledPatch" | Tee-Object -FilePath $OutputFile -Append
+"DAYS SINCE LAST PATCH: $DaysSincePatched" | Tee-Object -FilePath $OutputFile -Append
+
+if ($DaysSincePatched -gt 45)
+    {
+        "SYSTEM IS LIKELY VULNERABLE TO KNOWN EXPLOITS: YES" | Tee-Object -FilePath $OutputFile -Append
+    }
+else 
+    {
+        "SYSTEM IS LIKELY VULNERABLE TO KNOWN EXPLOITS: NO" | Tee-Object -FilePath $OutputFile -Append
+    }
+
 
 ### Get last 20 setup events
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
