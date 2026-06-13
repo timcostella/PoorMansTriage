@@ -477,13 +477,28 @@ $TCPConnections | Select-Object -Property LocalAddress, LocalPort, RemoteAddress
 "PORTS LISTEN FOR REMOTE CONNECTIONS: ***************************" | Tee-Object -FilePath $OutputFile -Append
 $TCPConnections | Where-Object {$_.RemoteAddress -ne "0.0.0.0" -and $_.RemoteAddress -ne "127.0.0.1"} | Select-Object -Property LocalAddress, LocalPort, RemoteAddress, RemotePort, OwningProcess, State, @{Name="ProcessName";Expression={Get-Process -id $_.OwningProcess | Select -ExpandProperty Path}}, @{Name="ProcessDescription";Expression={Get-Process -id $_.OwningProcess | Select -ExpandProperty Description}} | Format-List | Tee-Object -FilePath $OutputFile -Append
 
-
 ### Get Wireless Networks From Registry
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "WIRELESS NETWORKS: ***************************" | Tee-Object -FilePath $OutputFile -Append
 Get-ChildItem -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles" | Get-ItemProperty -Name ProfileName, Description, DateLastConnected | Select-Object ProfileName, Description, DateLastConnected | Tee-Object -FilePath $OutputFile -Append
 Start-Process -FilePath "C:\windows\System32\reg.exe" -ArgumentList "export HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles $WorkingDirectory\HKLM_NetworkList_Profiles.reg /y"
-### Get Network Connections
+
+### Get Windows Firewall Service Status
+"`n`n" | Tee-Object -FilePath $OutputFile -Append
+"WINDOWS FIREWALL SERVICE STATUS: ***************************" | Tee-Object -FilePath $OutputFile -Append
+Get-Service -Name "MpsSvc" | Select-Object -Property Name, DisplayName, Status, StartType | Tee-Object -FilePath $OutputFile -Append
+
+### Get Windows Firewall Status
+"`n`n" | Tee-Object -FilePath $OutputFile -Append
+"WINDOWS FIREWALL STATUS: ***************************" | Tee-Object -FilePath $OutputFile -Append
+Get-NetFirewallProfile | Select-Object -Property Name, Enabled, DefaultInboundAction, DefaultOutboundAction, AllowInboundRules, AllowOutboundRules | Tee-Object -FilePath $OutputFile -Append
+
+### Get Windows Firewall Rules
+"`n`n" | Tee-Object -FilePath $OutputFile -Append
+"WINDOWS FIREWALL RULES: ***************************" | Tee-Object -FilePath $OutputFile -Append
+$FirewallRules = Get-NetFirewallRule 
+$FirewallRules | Select-Object -Property Name, DisplayName, Enabled, Direction, Action, Profile, Grouping | Where-Object {$_.Enabled -eq $true} | Sort-Object -Property DisplayName | Format-Table -AutoSize | Tee-Object -FilePath $OutputFile -Append
+$FirewallRules | Select-Object -Property * | Sort-Object -Property DisplayName | Export-Csv -Path "$WorkingDirectory\$env:ComputerName-$DNSDomain-$FileNameDate-Triage-FirewallRules.csv" -Delimiter "," -NoTypeInformation
 
 ### Get local users
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
