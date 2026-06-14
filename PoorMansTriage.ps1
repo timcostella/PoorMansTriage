@@ -214,6 +214,15 @@ Function Get-HashesOfExes
 ## Get PowerShell History
 $PowerShellHistory = Get-Content (Get-PSReadlineOption).HistorySavePath
 
+if (Test-Path -Path $env:APPDATA\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt)
+    {
+        $PowerShell5History = Get-Content "C:\Users\$env:USERNAME\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt"
+    }
+
+if (Test-Path -Path $env:APPDATA\Microsoft\PowerShell\PSReadLine\ConsoleHost_history.txt)   
+    {
+        $PowerShell7History = Get-Content "C:\Users\$env:USERNAME\AppData\Roaming\Microsoft\PowerShell\PSReadLine\ConsoleHost_history.txt"
+    }
 
 ## Directory to save our work
 $WorkingDirectory  = "C:\PoorMansTriageOutput" 
@@ -322,6 +331,9 @@ $TimeZone =  Get-TimeZone | Select-Object -ExpandProperty ID
 "SCRIPT RUN BY (UserDomain\UserName): $($env:UserDomain)\$($env:UserName)" | Tee-Object -FilePath $OutputFile -Append
 $FileDate = Get-Date -Format "MM/dd/yy hh:mm:ss tt"
 "SCRIPT RUN DATE/TIME: $FileDate $TimeZone"    | Tee-Object -FilePath $OutputFile -Append
+"SCRIPT RUN IN: POWERSHELL $($PSVersionTable.PSEdition) $($PSVersionTable.PSVersion)" | Tee-Object -FilePath $OutputFile -Append
+
+
 
 ### Show whether run by admin or not
 $UserObj = [Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -367,11 +379,31 @@ catch
         "Unable to get clipboard content, likely because the script is running in a non-interactive session (e.g. as SYSTEM or via psexec) or there is no clipboard content." | Tee-Object -FilePath $OutputFile -Append
     }
 
+
+
+
 ### Get PowerShell History
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "POWERSHELL HISTORY: ******************************"  | Tee-Object -FilePath $OutputFile -Append
 $PowerShellHistory | Tee-Object -FilePath $OutputFile -Append
 $PowerShellHistory | Export-Csv -Path $PowerShellHistoryPath -Delimiter "," -NoTypeInformation
+
+if ($PowerShell5History -ne $null)
+    {
+        "`n`n" | Tee-Object -FilePath $OutputFile -Append
+        "POWERSHELL 5 HISTORY: ******************************"  | Tee-Object -FilePath $OutputFile -Append
+
+        $PowerShell5History | Tee-Object -FilePath $OutputFile -Append
+        $PowerShell5History | Export-Csv -Path "$WorkingDirectory\$env:ComputerName-$DNSDomain-$FileNameDate-Triage-PowerShell5History.csv" -Delimiter "," -NoTypeInformation
+    }
+
+if ($PowerShell7History -ne $null)
+    {
+        "`n`n" | Tee-Object -FilePath $OutputFile -Append
+        "POWERSHELL 7 HISTORY: ******************************"  | Tee-Object -FilePath $OutputFile -Append
+        $PowerShell7History | Tee-Object -FilePath $OutputFile -Append
+        $PowerShell7History | Export-Csv -Path "$WorkingDirectory\$env:ComputerName-$DNSDomain-$FileNameDate-Triage-PowerShell7History.csv" -Delimiter "," -NoTypeInformation
+    }    
 
 
 ### Get Antivirus Status
@@ -413,19 +445,19 @@ Start-Process -FilePath "C:\windows\System32\reg.exe" -ArgumentList "export HKLM
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "DISK INFO: *************************************"  | Tee-Object -FilePath $OutputFile -Append
 $Disks = Get-Disk 
-$Disks | Select-Object -Property Manufacturer, Model, SerialNumber, Size, PhysicalSectorSize, PartitionStyle, NumberOfPartitions, OperationalStatus  | Tee-Object -FilePath $OutputFile -Append
+$Disks | Select-Object -Property Manufacturer, Model, SerialNumber, Size, @{Name="SizeGB";Expression={$_.Size/1Gb}}, PhysicalSectorSize, PartitionStyle, NumberOfPartitions, OperationalStatus  | Tee-Object -FilePath $OutputFile -Append
 
 ### Get Logical Disk Info
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "LOGICAL DISK INFO: *****************************"  | Tee-Object -FilePath $OutputFile -Append
 $DisksObjs = Get-CimInstance -ClassName Win32_LogicalDisk
-$DisksObjs | Select-Object -Property Name, VolumeName, VolumeSerialNumber, Size, FreeSpace, FileSystem, DriveType | Format-Table | Tee-Object -FilePath $OutputFile -Append
+$DisksObjs | Select-Object -Property Name, VolumeName, VolumeSerialNumber, Size, @{Name="SizeGB";Expression={$_.Size/1Gb}}, FreeSpace, @{Name="FreeSpaceGB";Expression={$_.FreeSpace/1Gb}}, FileSystem, DriveType | Format-Table | Tee-Object -FilePath $OutputFile -Append
 
 ### Get Partition Info
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "DISK PARTITION INFO: *****************************"  | Tee-Object -FilePath $OutputFile -Append
 $Partitions = Get-Partition
-$Partitions | Select-Object -Property DiskNumber, PartitionNumber, Size, Type, DriveLetter, IsBoot, IsSystem, IsHidden | Sort-Object -Property DiskNumber, PartitionNumber | Format-Table | Tee-Object -FilePath $OutputFile -Append
+$Partitions | Select-Object -Property DiskNumber, PartitionNumber, Size,  @{Name="SizeGB";Expression={$_.Size/1Gb}}, Type, DriveLetter, IsBoot, IsSystem, IsHidden | Sort-Object -Property DiskNumber, PartitionNumber | Format-Table | Tee-Object -FilePath $OutputFile -Append
 
 ### Get system proxy info
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
@@ -471,12 +503,12 @@ Get-NetRoute | Sort-Object DestinationPrefix | Tee-Object -FilePath $OutputFile 
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "LISTENING PORTS: ***************************" | Tee-Object -FilePath $OutputFile -Append
 $TCPConnections = Get-NetTCPConnection
-$TCPConnections | Select-Object -Property LocalAddress, LocalPort, RemoteAddress, RemotePort, OwningProcess, State, @{Name="ProcessName";Expression={Get-Process -id $_.OwningProcess | Select -ExpandProperty Path}}, @{Name="ProcessDescription";Expression={Get-Process -id $_.OwningProcess | Select-Object -ExpandProperty Description}} | Format-List  | Tee-Object -FilePath $OutputFile -Append
+$TCPConnections | Select-Object -Property LocalAddress, LocalPort, RemoteAddress, RemotePort, OwningProcess, State, @{Name="ProcessName";Expression={Get-Process -id $_.OwningProcess | Select -ExpandProperty Path}}, @{Name="ProcessDescription";Expression={Get-Process -id $_.OwningProcess | Select-Object -ExpandProperty Description}},  @{Name="ProcessCommandLine";Expression={Get-Process -id $_.OwningProcess | Select-Object -ExpandProperty CommandLine}} | Format-List  | Tee-Object -FilePath $OutputFile -Append
 
 ### Get Listening Ports that have a remote address connected (i.e. not just listening locally)
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "PORTS LISTEN FOR REMOTE CONNECTIONS: ***************************" | Tee-Object -FilePath $OutputFile -Append
-$TCPConnections | Where-Object {$_.RemoteAddress -ne "0.0.0.0" -and $_.RemoteAddress -ne "127.0.0.1"} | Select-Object -Property LocalAddress, LocalPort, RemoteAddress, RemotePort, OwningProcess, State, @{Name="ProcessName";Expression={Get-Process -id $_.OwningProcess | Select -ExpandProperty Path}}, @{Name="ProcessDescription";Expression={Get-Process -id $_.OwningProcess | Select -ExpandProperty Description}} | Format-List | Tee-Object -FilePath $OutputFile -Append
+$TCPConnections | Where-Object {$_.RemoteAddress -ne "0.0.0.0" -and $_.RemoteAddress -ne "127.0.0.1"} | Select-Object -Property LocalAddress, LocalPort, RemoteAddress, RemotePort, OwningProcess, State, @{Name="ProcessName";Expression={Get-Process -id $_.OwningProcess | Select -ExpandProperty Path}}, @{Name="ProcessDescription";Expression={Get-Process -id $_.OwningProcess | Select -ExpandProperty Description}}, @{Name="ProcessCommandLine";Expression={Get-Process -id $_.OwningProcess | Select-Object -ExpandProperty CommandLine}} | Format-List | Tee-Object -FilePath $OutputFile -Append
 
 ### Get Wireless Networks From Registry
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
