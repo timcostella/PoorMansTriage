@@ -688,6 +688,12 @@ C:\windows\System32\qwinsta.exe | Tee-Object -FilePath $OutputFile -Append
 
 Get-CimInstance -ClassName Win32_LoggedOnUser | Select-Object -Property Antecedent, Dependent | Format-List | Tee-Object -FilePath $OutputFile -Append
 
+### Get SMB Mapped Drives
+"`n`n" | Tee-Object -FilePath $OutputFile -Append
+"SMB MAPPED DRIVES: ******************************" | Tee-Object -FilePath $OutputFile -Append
+$MappedDrives = Get-SmbMapping 
+$MappedDrives| Select-Object -Property LocalPath, RemotePath, UserName, Status | Sort-Object -Property LocalPath | Tee-Object -FilePath $OutputFile -Append
+$MappedDrives | Select-Object -Property * | Sort-Object -Property LocalPath | Export-Csv -Path "$WorkingDirectory\$env:ComputerName-$DNSDomain-$FileNameDate-Triage-SMBMappedDrives.csv" -Delimiter "," -NoTypeInformation 
 
 ### Get SMB shares
 $Shares = Get-SmbShare
