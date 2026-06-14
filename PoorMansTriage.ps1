@@ -212,6 +212,10 @@ Function Get-HashesOfExes
 
 
 ## Get PowerShell History
+## As there might be multiple versions of powershell installed, we will check the default powershell history location, as well as the powershell 5 and powershell 7 specific history locations.
+## The PowerShell 5 history is located at %APPDATA%\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt
+## The PowerShell 7 history is located at %APPDATA%\Microsoft\PowerShell\PSReadLine\ConsoleHost_history.txt
+
 $PowerShellHistory = Get-Content (Get-PSReadlineOption).HistorySavePath
 
 if (Test-Path -Path $env:APPDATA\Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt)
@@ -406,7 +410,18 @@ if ($PowerShell7History -ne $null)
     }    
 
 
+### Get Recent Items
+### Recent Items are shortcuts to recently accessed files, folders, and websites. They are stored in the Recent Items folder located at %APPDATA%\Microsoft\Windows\Recent.
+"`n`n" | Tee-Object -FilePath $OutputFile -Append
+"RECENT ITEMS: ******************************"  | Tee-Object -FilePath $OutputFile -Append
+$RecentItems = Get-ChildItem "$env:APPDATA\Microsoft\Windows\Recent" 
+$RecentItems | Select-Object -Property BaseName, CreationTimeUtc, LastAccessTimeUtc, LastWriteTimeUtc | Sort-Object -Property LastAccessTimeUtc | Format-List | Tee-Object -FilePath $OutputFile -Append
+$RecentItems | Export-csv -Path "$WorkingDirectory\$env:ComputerName-$DNSDomain-$FileNameDate-Triage-RecentItems.csv" -Delimiter "," -NoTypeInformation
+
+
 ### Get Antivirus Status
+### We can check the status of the built in Windows Defender Antivirus using the Get-MpComputerStatus cmdlet. 
+### This will show us if antivirus is enabled, if real time protection is enabled, when the last antivirus signature update was, etc.
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "ANTIVIRUS STATUS: *********************" | Tee-Object -FilePath $OutputFile -Append
 Get-MpComputerStatus | Select-Object -Property AntivirusEnabled, RealTimeProtectionEnabled, AMServiceEnabled, NISProtectionEnabled, AntivirusSignatureLastUpdated, AntivirusSignatureVersion | Tee-Object -FilePath $OutputFile -Append 
@@ -671,6 +686,9 @@ Get-ChildItem -Path Env:\ | Select-Object -Property Name, Value | Sort-Object -P
 "LOGGED IN USERS: *************************" | Tee-Object -FilePath $OutputFile -Append
 C:\windows\System32\qwinsta.exe | Tee-Object -FilePath $OutputFile -Append
 
+Get-CimInstance -ClassName Win32_LoggedOnUser | Select-Object -Property Antecedent, Dependent | Format-List | Tee-Object -FilePath $OutputFile -Append
+
+
 ### Get SMB shares
 $Shares = Get-SmbShare
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
@@ -699,12 +717,14 @@ $RegKeys | Tee-Object -FilePath $OutputFile -Append
 $AllRegKeys += $RegKeys
 Start-Process -FilePath "C:\windows\System32\reg.exe" -ArgumentList "export HKLM\Software\Microsoft\Windows\CurrentVersion\RunOnce $WorkingDirectory\HKLM_RunOnce.reg /y"
 
-### Get Named Pipes
-"`n`n" | Tee-Object -FilePath $OutputFile -Append
-"NAMED PIPES: ******************************" | Tee-Object -FilePath $OutputFile -Append
-[System.IO.Directory]::GetFiles("\\.\\pipe\\") | Sort-Object | Tee-Object -FilePath $OutputFile -Append
-
 ### Get HKU Registry entries
+
+### TypedPaths is a Windows Registry key that records the last 25 paths typed or inserted into the path bar of File Explorer (previously known as Windows Explorer). 
+### The typed paths, however, do not appear instantly within the TypedPaths key. The user has to close the File Explorer window for the typed paths to be committed to the registry 
+
+### TypedURLs is a Windows Registry key that is similar in concept to TypedPaths key. The key records URLs typed or inserted in the Internet Explorer (IE) address bar. 
+### URLs that are completed by the browser’s AutoComplete functionality are not recorded in the key unless the website was previously visited by the user.
+
 $InterestingRegKeys=@("SOFTWARE\Microsoft\Windows\CurrentVersion\Run", "SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce", "software\microsoft\Software\Microsoft\InternetExplorer\TypedURLs", "software\microsoft\windows\currentversion\explorer\typedpaths")
 
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
@@ -734,9 +754,11 @@ Foreach ($UserProfile in $UserProfiles)
             "Username: $UserName ($($UserProfile.SID))" | Tee-Object -FilePath $OutputFile -Append
             
             #Loop through all the interesting keys
+            $AllRunRegKeys = @()
             Foreach($InterestingRegKey in $InterestingRegKeys)
                 {
-                    "Registry Key: $InterestingRegKey" | Tee-Object -FilePath $OutputFile -Append
+                    "`n`n" | Tee-Object -FilePath $OutputFile -Append
+                    "USER REGISTRY KEY:  $InterestingRegKey ***********************" | Tee-Object -FilePath $OutputFile -Append
 
                     #Last get the last part of the registry key for use in the file name of the exported key
                     $ShortKeyNameStart = $InterestingRegKey.LastIndexOf("\") + 1
@@ -753,6 +775,19 @@ Foreach ($UserProfile in $UserProfiles)
         }
         
     }
+
+### Get Named Pipes
+"`n`n" | Tee-Object -FilePath $OutputFile -Append
+"NAMED PIPES: ******************************" | Tee-Object -FilePath $OutputFile -Append
+[System.IO.Directory]::GetFiles("\\.\\pipe\\") | Sort-Object | Tee-Object -FilePath $OutputFile -Append
+
+### Get System Drivers
+"`n`n" | Tee-Object -FilePath $OutputFile -Append
+"SYSTEM DRIVERS: ******************************" | Tee-Object -FilePath $OutputFile -Append
+$SystemDrivers = Get-CimInstance -ClassName Win32_SystemDriver
+$SystemDrivers | Select-Object -Property Name, DisplayName, State, StartMode, PathName | Sort-Object -Property Name | Format-List | Tee-Object -FilePath $OutputFile -Append
+$SystemDrivers | Select-Object -Property * | Sort-Object -Property Name | Export-Csv -Path $OutputFile_SystemDrivers -Delimiter "," -NoTypeInformation
+
 
 ### Get startup command items
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
