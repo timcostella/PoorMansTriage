@@ -371,6 +371,8 @@ $TotalMemoryGB = [Math]::Round($SysInfo.TotalPhysicalMemory/1GB)
 "OS UPTIME (DAYS): $((Get-Date) - ($OS.LastBootUpTime)).TotalDays" | Tee-Object -FilePath $OutputFile -Append
 "OS LAST PATCH INSTALLED: $LastHotfixInstalled" | Tee-Object -FilePath $OutputFile -Append
 
+
+
 ### Get Clipboard Content
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "CLIPBOARD CONTENT: ******************************"  | Tee-Object -FilePath $OutputFile -Append
@@ -382,7 +384,6 @@ catch
     {
         "Unable to get clipboard content, likely because the script is running in a non-interactive session (e.g. as SYSTEM or via psexec) or there is no clipboard content." | Tee-Object -FilePath $OutputFile -Append
     }
-
 
 
 
@@ -408,6 +409,40 @@ if ($PowerShell7History -ne $null)
         $PowerShell7History | Tee-Object -FilePath $OutputFile -Append
         $PowerShell7History | Export-Csv -Path "$WorkingDirectory\$env:ComputerName-$DNSDomain-$FileNameDate-Triage-PowerShell7History.csv" -Delimiter "," -NoTypeInformation
     }    
+
+
+try 
+    {
+            $DOMAIN = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
+            "SYSTEM JOINED TO DOMAIN: $DOMAIN" | Tee-Object -FilePath $OutputFile -Append
+            $DomainJoined = $true
+    }  
+catch 
+    {     
+            if ($_ -like "*not associated with an Active Directory domain or forest*")  
+                { 
+                    "SYSTEM IS NOT JOINED TO A DOMAIN" | Tee-Object -FilePath $OutputFile -Append
+                }  
+    }
+
+if ($DomainJoined)
+    {
+        ### Get Active Directory Domain Information
+        "`n`n" | Tee-Object -FilePath $OutputFile -Append
+        "ACTIVE DIRECTORY DOMAIN: ******************************"  | Tee-Object -FilePath $OutputFile -Append
+        "LOGON SERVER: $($env:LOGONSERVER)" | Tee-Object -FilePath $OutputFile -Append
+        $CurrentDomain = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
+        "FSMO ROLE HOLDER - PDC EMULATOR: $($CurrentDomain.PdcRoleOwner)" | Tee-Object -FilePath $OutputFile -Append
+        "FSMO ROLE HOLDER - RID MASTER: $($CurrentDomain.RidRoleOwner)" | Tee-Object -FilePath $OutputFile -Append
+        "FSMO ROLE HOLDER - INFRASTRUCTURE MASTER: $($CurrentDomain.InfrastructureRoleOwner)" |  Tee-Object -FilePath $OutputFile -Append
+        "DOMAIN CONTROLLERS: $($CurrentDomain.DomainControllers)" | Tee-Object -FilePath $OutputFile -Append     
+        "FOREST: $($CurrentDomain.Forest)" | Tee-Object -FilePath $OutputFile -Append
+
+        ### Get Active Directory Password Policy
+        "`n`n" | Tee-Object -FilePath $OutputFile -Append
+        "ACTIVE DIRECTORY PASSWORD POLICY: ******************************"  | Tee-Object -FilePath $OutputFile -Append
+        net accounts | Tee-Object -FilePath $OutputFile -Append
+    }
 
 
 ### Get Recent Items
@@ -552,7 +587,7 @@ $FirewallRules | Select-Object -Property * | Sort-Object -Property DisplayName |
 "`n`n" | Tee-Object -FilePath $OutputFile -Append
 "LOCAL USERS: ******************************" | Tee-Object -FilePath $OutputFile -Append
 $LocalUsers = Get-LocalUser 
-$LocalUsers | Select-Object -Property Name, SID, Enabled, LastLogon, PasswordLastSet | Sort-Object -Property Name | Format-Table | Tee-Object -FilePath $OutputFile -Append
+$LocalUsers | Select-Object -Property Name, Description, SID, Enabled, LastLogon, PasswordLastSet | Sort-Object -Property Name | Format-Table | Tee-Object -FilePath $OutputFile -Append
 $LocalUsers | Select-Object -Property * | Sort-Object -Property Name | Export-Csv -Path $OutputFile_LocalUsers
 
 ### Check if local guest is enabled
