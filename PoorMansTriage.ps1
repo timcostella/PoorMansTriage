@@ -640,7 +640,7 @@ $TCPConnections | Export-Csv -Path $OutputFile_ListeningPorts -Delimiter "," -No
 $TCPConnections | Where-Object {$_.RemoteAddress -ne "0.0.0.0" -and $_.RemoteAddress -ne "127.0.0.1"} | Select-Object -Property LocalAddress, LocalPort, RemoteAddress, RemotePort, OwningProcess, State, @{Name="ProcessName";Expression={Get-Process -id $_.OwningProcess | Select -ExpandProperty Path}}, @{Name="ProcessDescription";Expression={Get-Process -id $_.OwningProcess | Select -ExpandProperty Description}}, @{Name="ProcessCommandLine";Expression={Get-Process -id $_.OwningProcess | Select-Object -ExpandProperty CommandLine}} | Format-List | Tee-Object -FilePath $GlobalOutputFile -Append
 
 "REMOTE IPS/PORTS CONNECTED TO: ***************************" | Tee-Object -FilePath $GlobalOutputFile -Append
-$TCPConnections | Select-Object -Property RemoteAddress, RemotePort  -Unique
+$TCPConnections | Where-Object {$_.RemoteAddress -ne "0.0.0.0" -and $_.RemoteAddress -ne "127.0.0.1"} | Select-Object -Property RemoteAddress, RemotePort  -Unique  | Tee-Object -FilePath $GlobalOutputFile -Append
 
 ### Get Wireless Networks From Registry
 "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
