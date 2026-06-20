@@ -466,7 +466,17 @@ $TotalMemoryGB = [Math]::Round($SysInfo.TotalPhysicalMemory/1GB)
 "CLIPBOARD CONTENT: ******************************"  | Tee-Object -FilePath $GlobalOutputFile -Append
 try 
     {
-        Get-Clipboard | Tee-Object -FilePath $GlobalOutputFile -Append
+        $Clipboard_Contents = Get-Clipboard
+
+        if ($Clipboard_Contents -ne $null)
+            {
+                $Clipboard_Contents | Tee-Object -FilePath $GlobalOutputFile -Append
+            }
+        else 
+            {
+               "No content in the clipboard" | Tee-Object -FilePath $GlobalOutputFile -Append   
+            }
+        
     }
 catch
     {
@@ -479,7 +489,7 @@ catch
 "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
 "GATHERING POWERSHELL HISTORY: ******************************"  | Out-File -FilePath $GlobalOutputFile -Append
 Get-PowerShellHistory
-
+"PowerShell History saved to file"  | Out-File -FilePath $GlobalOutputFile -Append
 
 
 
@@ -488,7 +498,7 @@ Get-PowerShellHistory
 "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
 "RECENT ITEMS: ******************************"  | Tee-Object -FilePath $GlobalOutputFile -Append
 $RecentItems = Get-ChildItem "$env:APPDATA\Microsoft\Windows\Recent" 
-$RecentItems | Select-Object -Property BaseName, CreationTimeUtc, LastAccessTimeUtc, LastWriteTimeUtc | Sort-Object -Property LastAccessTimeUtc | Format-List | Tee-Object -FilePath $GlobalOutputFile -Append
+$RecentItems | Select-Object -Property BaseName, LastAccessTimeUtc -Unique  | Sort-Object -Property LastAccessTimeUtc | Format-Table -AutoSize | Tee-Object -FilePath $GlobalOutputFile -Append
 $RecentItems | Export-csv -Path "$WorkingDirectory\$env:ComputerName-$DNSDomain-$FileNameDate-Triage-RecentItems.csv" -Delimiter "," -NoTypeInformation
 
 
@@ -503,6 +513,12 @@ Foreach ($LogName in $LogNames)
             if ($LogObj.IsEnabled -eq $false)
                 {
                     "WINDOWS SYSTEM LOG: $LogName IS NOT ENABLED" | Tee-Object -FilePath $GlobalOutputFile -Append
+                }
+            else 
+                {
+                    "WINDOWS SYSTEM LOG: $LogName IS ENABLED" | Tee-Object -FilePath $GlobalOutputFile -Append
+                    
+                    ## check the size of the log, if it is full etc
                 }
     }
 
@@ -537,7 +553,7 @@ catch
 "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
 "INSTALLED DEVICES: ******************************"  | Tee-Object -FilePath $GlobalOutputFile -Append
 $InstalledDevices = Get-CimInstance Win32_PnPEntity 
-$InstalledDevices | Select-Object Name, DeviceID, Manufacturer, Status | Sort-Object -Property Name, Manufacturer | Format-List | Tee-Object -FilePath $GlobalOutputFile -Append
+$InstalledDevices | Select-Object Name, Manufacturer -Unique | Sort-Object -Property Name, Manufacturer | Format-Table -AutoSize | Tee-Object -FilePath $GlobalOutputFile -Append
 $InstalledDevices | Select-Object -Property * | Sort-Object -Property Name, Manufacturer | Export-Csv -Path $OutputFile_InstalledDevices -Delimiter "," -NoTypeInformation
 
 ### Get Mounted Devices
@@ -590,19 +606,20 @@ Get-Content "C:\Windows\system32\drivers\etc\hosts" | Tee-Object -FilePath $Glob
 "DNS SERVERS: ******************************" | Tee-Object -FilePath $GlobalOutputFile -Append
 $ClientServerAddresses = Get-DnsClientServerAddress  
 $ClientServerAddresses | Select-Object -Property InterfaceAlias, InterfaceIndex, AddressFamily, ServerAddresses | Sort-Object -Property InterfaceAlias, AddressFamily | Format-Table -AutoSize | Tee-Object -FilePath $GlobalOutputFile -Append
-$ClientServerAddresses | Select-Object -Property InterfaceAlias, InterfaceIndex, AddressFamily, ServerAddresses | Sort-Object -Property InterfaceAlias, AddressFamily | Format-Table -AutoSize | Tee-Object -FilePath $GlobalOutputFile -Append
-| Select-Object -Property * | Sort-Object -Property InterfaceAlias, AddressFamily | Export-Csv -Path $OutputFile_DNS
+$ClientServerAddresses | Select-Object -Property * | Sort-Object -Property InterfaceAlias, AddressFamily | Export-Csv -Path $OutputFile_DNS
 
 ### Get DNS Client Cache
 "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
 "DNS CLIENT CACHE: ******************************" | Tee-Object -FilePath $GlobalOutputFile -Append
 $DNSClientCache = Get-DnsClientCache 
-$DNSClientCache | Select-Object -Property Name, RecordType, TimeToLive, Data | Sort-Object -Property Name, RecordType | Format-Table -AutoSize | Tee-Object -FilePath $GlobalOutputFile -Append
+$DNSClientCache | Select-Object -Property Name, Data -Unique | Sort-Object -Property Name | Format-Table -AutoSize | Tee-Object -FilePath $GlobalOutputFile -Append
+$DNSClientCache | Select-Object -Property * | Export-CSV -Path $OutputFile_DNS_Cache -Delimiter "," -NoTypeInformation
 
 ### Get ARP Cache
 "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
 "ARP CACHE: *******************************" | Tee-Object -FilePath $GlobalOutputFile -Append
-Get-NetNeighbor | Sort-Object -Property ifIndex, IpAddress, LinkLayerAddress | Format-Table | Tee-Object -FilePath $GlobalOutputFile -Append
+$ArpCache = Get-NetNeighbor 
+$ArpCache | Select-Object -Unique | Sort-Object -Property IpAddress, LinkLayerAddress | Format-Table | Tee-Object -FilePath $GlobalOutputFile -Append
 
 ### Get Routing Table
 "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
@@ -613,12 +630,17 @@ Get-NetRoute | Sort-Object DestinationPrefix | Tee-Object -FilePath $GlobalOutpu
 "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
 "LISTENING PORTS: ***************************" | Tee-Object -FilePath $GlobalOutputFile -Append
 $TCPConnections = Get-NetTCPConnection
-$TCPConnections | Select-Object -Property LocalAddress, LocalPort, RemoteAddress, RemotePort, OwningProcess, State, @{Name="ProcessName";Expression={Get-Process -id $_.OwningProcess | Select -ExpandProperty Path}}, @{Name="ProcessDescription";Expression={Get-Process -id $_.OwningProcess | Select-Object -ExpandProperty Description}},  @{Name="ProcessCommandLine";Expression={Get-Process -id $_.OwningProcess | Select-Object -ExpandProperty CommandLine}} | Format-List  | Tee-Object -FilePath $GlobalOutputFile -Append
+$TCPConnections | Select-Object -Property LocalAddress, LocalPort, RemoteAddress, RemotePort, OwningProcess, State, @{Name="ProcessDescription";Expression={Get-Process -id $_.OwningProcess | Select-Object -ExpandProperty Description}},  @{Name="ProcessCommandLine";Expression={Get-Process -id $_.OwningProcess | Select-Object -ExpandProperty CommandLine}} | Format-List  | Tee-Object -FilePath $GlobalOutputFile -Append
+$TCPConnections | Export-Csv -Path $OutputFile_ListeningPorts -Delimiter "," -NoTypeInformation
+# $TCPConnections | Select-Object -Property LocalAddress, LocalPort, RemoteAddress, RemotePort, OwningProcess, State, @{Name="ProcessName";Expression={Get-Process -id $_.OwningProcess | Select-Object -ExpandProperty Path}}, @{Name="ProcessDescription";Expression={Get-Process -id $_.OwningProcess | Select-Object -ExpandProperty Description}},  @{Name="ProcessCommandLine";Expression={Get-Process -id $_.OwningProcess | Select-Object -ExpandProperty CommandLine}} | Format-List  | Tee-Object -FilePath $GlobalOutputFile -Append
 
 ### Get Listening Ports that have a remote address connected (i.e. not just listening locally)
 "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
 "PORTS LISTEN FOR REMOTE CONNECTIONS: ***************************" | Tee-Object -FilePath $GlobalOutputFile -Append
 $TCPConnections | Where-Object {$_.RemoteAddress -ne "0.0.0.0" -and $_.RemoteAddress -ne "127.0.0.1"} | Select-Object -Property LocalAddress, LocalPort, RemoteAddress, RemotePort, OwningProcess, State, @{Name="ProcessName";Expression={Get-Process -id $_.OwningProcess | Select -ExpandProperty Path}}, @{Name="ProcessDescription";Expression={Get-Process -id $_.OwningProcess | Select -ExpandProperty Description}}, @{Name="ProcessCommandLine";Expression={Get-Process -id $_.OwningProcess | Select-Object -ExpandProperty CommandLine}} | Format-List | Tee-Object -FilePath $GlobalOutputFile -Append
+
+"REMOTE IPS/PORTS CONNECTED TO: ***************************" | Tee-Object -FilePath $GlobalOutputFile -Append
+$TCPConnections | Select-Object -Property RemoteAddress, RemotePort  -Unique
 
 ### Get Wireless Networks From Registry
 "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
