@@ -468,7 +468,7 @@ try
     {
         $Clipboard_Contents = Get-Clipboard
 
-        if ($Clipboard_Contents -ne $null)
+        if ($Clipboard_Contents.Length -ne 0)
             {
                 $Clipboard_Contents | Tee-Object -FilePath $GlobalOutputFile -Append
             }
@@ -492,9 +492,77 @@ Get-PowerShellHistory
 "PowerShell History saved to file"  | Out-File -FilePath $GlobalOutputFile -Append
 
 
+### Get Prefech Items
+# The name of the prefetch file takes on the format: {executable_name}-{hash}.pf, where executable_name is the name of the executable file that was run, and hash provides a hash of the executable's path and the command line used to launch the executable. 
+# If the same executable was run with different command line options, or the executable was moved and then run again, this essentially means there will be more than one prefetch entry for it.
+"`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
+"WINDOWS PREFETCH ITEMS: ******************************"  | Out-File -FilePath $GlobalOutputFile -Append
+$PrefechItems = Get-ChildItem C:\Windows\Prefetch | Sort-Object -Property LastWriteTime -Descending  
+$PrefechItems | Out-File -FilePath $GlobalOutputFile -Append
 
-### Get Recent Items
+### Get the AmCache 
+# AmCache’s contribution to forensic investigations: The AmCache registry hive’s role in storing information about executed and installed applications is crucial, yet it’s often mistakenly believed to capture every execution event. 
+# This misunderstanding can lead to significant gaps in forensic narratives, particularly where malware employs evasion techniques. 
+# Moreover, the lack of execution timestamp specificity in AmCache data further complicates accurate timeline reconstruction.
+# https://www.microsoft.com/en-us/security/blog/2024/04/23/new-microsoft-incident-response-guide-helps-simplify-cyberthreat-investigations/
+
+# A Windows Registry hive that is created to store information related to installed applications, programs executed (or present), drivers loaded, and more
+# Tracks application files, executed programs, driver binaries, PnP devices, driver packages, device containers, and application shortcuts from Windows 10+ systems
+# Executable file name, file path, SHA1 hash, metadata and timestamps are recorded
+# The SHA1 hash in AmCache is only calculated for the first 31,457,280 bytes (30 MB) of large files
+# Stored in a separate file named Amcache.hve within %SYSTEMROOT%\appcompat\Program
+
+# AmCache should be considered an “evidence of presence” or “evidence of existence” artifact – it cannot be used to prove a binary executed
+# Use AmCache to show that a file exists (or previously existed) in a given location
+
+
+###  Get Prefetch files
+# Prefect is designed to speed up the subsequent launch of applications to improve the overall user experience
+# Prefetch is located in %SYSTEMROOT%\Prefetch
+# Prefetch is enabled by default on Windows desktop operating systems, but not on Windows Server
+# The prefetching process typically operates within the first ~10 seconds of an application launch, and monitors the files and directories with which an application interacts
+# We, as forensic investigators, can leverage Prefetch as a generally reliable evidence of execution artifact
+# In Windows 8 and later, the last 8 times of execution are recorded, and the first time of execution can be derived based upon the creation time of the .pf file minus a ~0-10 second delta for the prefetching process
+# In Windows 8 and later, 1,024 Prefetch files are kept, using a first in first out process
+# The 8-character hash! The Prefetch hash shown in .pf filenames is computed based upon the file path of the executable and, in some cases, the command line parameters utilized
+# For example, notice that you’ll see numerous svchost.exe Prefetch files due to the numerous –k flags utilized by svchost.exe
+# Prefetch is NOT enabled by default on Windows Server operating systems
+# In most cases, you can determine the first time and most recent 8 times of execution for a given binary using Prefetch
+# The creation time (B) of a .pf file will generally indicate the first time that binary executed on the system (assuming previous Prefetch files were not removed)
+# The last modification time (M) of a .pf file will generally indicate the last time that binary executed on the system
+# A delta of 0-10 seconds will need to be subtracted from the creation and modification times to account for the prefetching process time, which varies by application
+# Parsing a Prefetch file with a forensic tool can reveal a list of files and directories with which a binary has interacted
+
+
+
+
+### Get Recent Items (.lnk files)
 ### Recent Items are shortcuts to recently accessed files, folders, and websites. They are stored in the Recent Items folder located at %APPDATA%\Microsoft\Windows\Recent.
+# Link files (.lnk) are shortcut files created upon creation of the file with which they are associated;
+# they are primarily used by Windows for the metadata contained within them
+# Jump Lists are a collection of Link files
+# Upon right-clicking an application
+# Link files are located in: %USERPROFILE%\AppData\Roaming\Microsoft\Windows\Recent
+# Link files can be used as evidence of files that may have once existed but have since been deleted from the device
+# Link files contain the Modified, Accessed, and Creation times of the target file
+# The creation time of a Link file indicates the first time the target file was created
+# The modification time of a Link file indicates the last time the target file was opened
+# Other key metadata within a Link file includes target file path, file size, file attributes, origin system name, and origin volume information
+
+# Jump Lists are located in: 
+#    %USERPROFILE%\AppData\Roaming\Microsoft\Windows\Recent\AutomaticDestinations
+#    %USERPROFILE%\AppData\Roaming\Microsoft\Windows\Recent\CustomDestinations
+
+# Jump Lists can be useful for seeing files with which a given application has interacted, as well as other relevant information
+# Jump Lists contained within AutomaticDestinations pertain to Windows OS provided features common amongst multiple applications; \
+# CustomDestinations contain application specific Jump Lists utilized by various applications for a specific purpose
+# AutomaticDestinations are in CDF format
+
+
+
+
+
+
 "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
 "RECENT ITEMS: ******************************"  | Tee-Object -FilePath $GlobalOutputFile -Append
 $RecentItems = Get-ChildItem "$env:APPDATA\Microsoft\Windows\Recent" 
@@ -624,7 +692,7 @@ $ArpCache | Select-Object -Unique | Sort-Object -Property IpAddress, LinkLayerAd
 ### Get Routing Table
 "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
 "NETWORK ROUTES: ***************************" | Tee-Object -FilePath $GlobalOutputFile -Append
-Get-NetRoute | Sort-Object DestinationPrefix | Tee-Object -FilePath $GlobalOutputFile -Append
+Get-NetRoute | Sort-Object DestinationPrefix | Format-Table -AutoSize | Tee-Object -FilePath $GlobalOutputFile -Append
 
 ### Get Listening Ports
 "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
@@ -669,7 +737,7 @@ $FirewallRules | Select-Object -Property * | Sort-Object -Property DisplayName |
 "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
 "LOCAL USERS: ******************************" | Tee-Object -FilePath $GlobalOutputFile -Append
 $LocalUsers = Get-LocalUser 
-$LocalUsers | Select-Object -Property Name, Description, SID, Enabled, LastLogon, PasswordLastSet | Sort-Object -Property Name | Format-Table | Tee-Object -FilePath $GlobalOutputFile -Append
+$LocalUsers | Select-Object -Property Name, Description, SID, Enabled, LastLogon, PasswordLastSet | Sort-Object -Property Name | Format-List | Tee-Object -FilePath $GlobalOutputFile -Append
 $LocalUsers | Select-Object -Property * | Sort-Object -Property Name | Export-Csv -Path $OutputFile_LocalUsers
 
 ### Check if local guest is enabled
@@ -809,8 +877,16 @@ Get-CimInstance -ClassName Win32_LoggedOnUser | Select-Object -Property Antecede
 "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
 "SMB MAPPED DRIVES: ******************************" | Tee-Object -FilePath $GlobalOutputFile -Append
 $MappedDrives = Get-SmbMapping 
-$MappedDrives| Select-Object -Property LocalPath, RemotePath, UserName, Status | Sort-Object -Property LocalPath | Tee-Object -FilePath $GlobalOutputFile -Append
-$MappedDrives | Select-Object -Property * | Sort-Object -Property LocalPath | Export-Csv -Path "$WorkingDirectory\$env:ComputerName-$DNSDomain-$FileNameDate-Triage-SMBMappedDrives.csv" -Delimiter "," -NoTypeInformation 
+
+if ($MappedDrives -ne $null)
+    {
+        $MappedDrives| Select-Object -Property LocalPath, RemotePath, UserName, Status | Sort-Object -Property LocalPath | Tee-Object -FilePath $GlobalOutputFile -Append
+        $MappedDrives | Select-Object -Property * | Sort-Object -Property LocalPath | Export-Csv -Path "$WorkingDirectory\$env:ComputerName-$DNSDomain-$FileNameDate-Triage-SMBMappedDrives.csv" -Delimiter "," -NoTypeInformation 
+    }
+else 
+    {
+        "No mapped drives found" | Tee-Object -FilePath $GlobalOutputFile -Append
+    }
 
 ### Get SMB shares
 $Shares = Get-SmbShare
@@ -823,7 +899,7 @@ $Shares | Tee-Object -FilePath $GlobalOutputFile -Append
 "SMB SHARE PERMS: *************************" | Tee-Object -FilePath $GlobalOutputFile -Append
 $Shares | Get-SmbShareAccess | Sort-Object -Property Name | Tee-Object -FilePath $GlobalOutputFile -Append
 
-###Get HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run\ Registry entries
+### Get HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run\Registry entries
 "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
 "REGISTRY KEY (HKLM RUN): *************************" | Tee-Object -FilePath $GlobalOutputFile -Append
 $AllRegKeys=@()
@@ -851,7 +927,7 @@ Start-Process -FilePath "C:\windows\System32\reg.exe" -ArgumentList "export HKLM
 $InterestingRegKeys=@("SOFTWARE\Microsoft\Windows\CurrentVersion\Run", "SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce", "software\microsoft\Software\Microsoft\InternetExplorer\TypedURLs", "software\microsoft\windows\currentversion\explorer\typedpaths")
 
 "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
-"USER REGISTRY KEY: ***********************" | Tee-Object -FilePath $GlobalOutputFile -Append
+"USER REGISTRY KEYS: ***********************" | Tee-Object -FilePath $GlobalOutputFile -Append
 
 #Iterate over the user profiles and save out some interesting keys under HKU:\SID\
 Foreach ($UserProfile in $UserProfiles)
@@ -874,14 +950,14 @@ Foreach ($UserProfile in $UserProfiles)
            
             #Load the User's registry key
             Start-Process -FilePath "C:\Windows\System32\reg.exe" -ArgumentList "load HKU\$($UserProfile.SID) $($UserProfile.LOCALPATH)\NTUSER.DAT" -Wait
-            "Username: $UserName ($($UserProfile.SID))" | Tee-Object -FilePath $GlobalOutputFile -Append
+            "USERNAME ($($UserProfile.SID))  REGISTRY KEYS: ***********************" | Tee-Object -FilePath $GlobalOutputFile -Append
             
             #Loop through all the interesting keys
             $AllRunRegKeys = @()
             Foreach($InterestingRegKey in $InterestingRegKeys)
                 {
                     "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
-                    "USER REGISTRY KEY:  $InterestingRegKey ***********************" | Tee-Object -FilePath $GlobalOutputFile -Append
+                    "USER: ($($UserProfile.SID)) REGISTRY KEY: $InterestingRegKey ***********************" | Tee-Object -FilePath $GlobalOutputFile -Append
 
                     #Last get the last part of the registry key for use in the file name of the exported key
                     $ShortKeyNameStart = $InterestingRegKey.LastIndexOf("\") + 1
