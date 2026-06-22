@@ -492,9 +492,30 @@ Get-PowerShellHistory
 "PowerShell History saved to file"  | Out-File -FilePath $GlobalOutputFile -Append
 
 
+
+
 ### Get Prefech Items
+
+###  Get Prefetch files
+# Prefect is designed to speed up the subsequent launch of applications to improve the overall user experience
+# Prefetch is located in %SYSTEMROOT%\Prefetch
+# Prefetch is enabled by default on Windows desktop operating systems, but not on Windows Server
+# The prefetching process typically operates within the first ~10 seconds of an application launch, and monitors the files and directories with which an application interacts
+# We, as forensic investigators, can leverage Prefetch as a generally reliable evidence of execution artifact
+# In Windows 8 and later, the last 8 times of execution are recorded, and the first time of execution can be derived based upon the creation time of the .pf file minus a ~0-10 second delta for the prefetching process
+# In Windows 8 and later, 1,024 Prefetch files are kept, using a first in first out process
+# The 8-character hash! The Prefetch hash shown in .pf filenames is computed based upon the file path of the executable and, in some cases, the command line parameters utilized
+# For example, notice that you’ll see numerous svchost.exe Prefetch files due to the numerous –k flags utilized by svchost.exe
+# Prefetch is NOT enabled by default on Windows Server operating systems
+# In most cases, you can determine the first time and most recent 8 times of execution for a given binary using Prefetch
+# The creation time (B) of a .pf file will generally indicate the first time that binary executed on the system (assuming previous Prefetch files were not removed)
+# The last modification time (M) of a .pf file will generally indicate the last time that binary executed on the system
+# A delta of 0-10 seconds will need to be subtracted from the creation and modification times to account for the prefetching process time, which varies by application
+# Parsing a Prefetch file with a forensic tool can reveal a list of files and directories with which a binary has interacted
+
 # The name of the prefetch file takes on the format: {executable_name}-{hash}.pf, where executable_name is the name of the executable file that was run, and hash provides a hash of the executable's path and the command line used to launch the executable. 
 # If the same executable was run with different command line options, or the executable was moved and then run again, this essentially means there will be more than one prefetch entry for it.
+
 "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
 "WINDOWS PREFETCH ITEMS: ******************************"  | Out-File -FilePath $GlobalOutputFile -Append
 $PrefechItems = Get-ChildItem C:\Windows\Prefetch | Sort-Object -Property LastWriteTime -Descending  
@@ -514,25 +535,6 @@ $PrefechItems | Out-File -FilePath $GlobalOutputFile -Append
 
 # AmCache should be considered an “evidence of presence” or “evidence of existence” artifact – it cannot be used to prove a binary executed
 # Use AmCache to show that a file exists (or previously existed) in a given location
-
-
-###  Get Prefetch files
-# Prefect is designed to speed up the subsequent launch of applications to improve the overall user experience
-# Prefetch is located in %SYSTEMROOT%\Prefetch
-# Prefetch is enabled by default on Windows desktop operating systems, but not on Windows Server
-# The prefetching process typically operates within the first ~10 seconds of an application launch, and monitors the files and directories with which an application interacts
-# We, as forensic investigators, can leverage Prefetch as a generally reliable evidence of execution artifact
-# In Windows 8 and later, the last 8 times of execution are recorded, and the first time of execution can be derived based upon the creation time of the .pf file minus a ~0-10 second delta for the prefetching process
-# In Windows 8 and later, 1,024 Prefetch files are kept, using a first in first out process
-# The 8-character hash! The Prefetch hash shown in .pf filenames is computed based upon the file path of the executable and, in some cases, the command line parameters utilized
-# For example, notice that you’ll see numerous svchost.exe Prefetch files due to the numerous –k flags utilized by svchost.exe
-# Prefetch is NOT enabled by default on Windows Server operating systems
-# In most cases, you can determine the first time and most recent 8 times of execution for a given binary using Prefetch
-# The creation time (B) of a .pf file will generally indicate the first time that binary executed on the system (assuming previous Prefetch files were not removed)
-# The last modification time (M) of a .pf file will generally indicate the last time that binary executed on the system
-# A delta of 0-10 seconds will need to be subtracted from the creation and modification times to account for the prefetching process time, which varies by application
-# Parsing a Prefetch file with a forensic tool can reveal a list of files and directories with which a binary has interacted
-
 
 
 
@@ -560,8 +562,68 @@ $PrefechItems | Out-File -FilePath $GlobalOutputFile -Append
 
 
 
+### Get ShellBags
+# ShellBags are set of Registry keys which contain details about a user’s viewed folder; such as its size, position, and view preferences
+# A ShellBags entry is created for every newly explored folder, and it can provide historical evidence of directory access and traversal
+# ShellBags are user specific and are found within NTUSER.dat and UsrClass.dat user-specific Registry hives
+# ShellBags follow a hierarchy similar to Windows Explorer, with keys providing additional information
+# First interacted time, last interacted time, and full folder path (including remote UNC and removable drive paths) are recorded
+# .zip files and other compression formats including, but not limited to, .rar, .tar, .tar.gz,etc. are tracked by this artifact because Windows Explorer treats those archives as “folders”; 
+# otherwise, files are not tracked within ShellBags
+# With the exception of certain archive formats, files are NOT tracked – only folders
+# ShellBags is just for the Windows Explorer GUI! 
+# Locations browsed via Command Prompt, PowerShell, or Bash/WSL are NOT tracked by this artifact
+# Deleted folders’ ShellBags entries are NOT deleted, and they can be updated if new folders share the same name/path
+# Exploring a folder is NOT the only way a ShellBags entry is created; changing certain properties on a folder (like the icon) without exploring it will also create an entry
+# Desktop.ini is also used to store information about folders; however, the information tracked by Desktop.ini is specific to the folder type (General items, Documents, Pictures, Music, or Videos)
+# Use ShellBags to show that a folder (or archive) exists (or previously existed) in a given location, that a user had knowledge of a specific folder (or archive), and/or when the folder (or archive) was first or last interacted with and by who
+# Existence of ShellBags indicates an interactive session was used, meaning first and/or last interacted timestamps can be used to identify a time period in which an interactive session was active
+# Use ShellBags when searching for evidence of data collection and/or staging
+# https://www.magnetforensics.com/blog/forensic-analysis-of-windows-shellbags/
+
+### Get Shimcache
+# Provides compatibility for older software running in newer versions of Windows
+# Executive file name, file path, and timestamp are recorded
+# Timestamp is the last modification time of the file (M in MACB)
+# Windows 7/8/8.1 had a flag that could be used to determine if a program had executed on a system of interest
+# You can NOT use Shimcache to prove execution in Windows 10 or later
+# Files visible in Windows Explorer windows can determine what is shimmed
+# Renaming or moving a file will cause it to be re-shimmed
+# Last 1,024 entries are retained
+# Most tools will output data with most recently shimmed entries at the top of the list; a numerical cache entry position is also recorded
+# Stored in the SYSTEM registry hive
+# Only written on reboot or shutdown
+# The timestamp! It is NOT the time of shim and it is NOT the time of execution.
+# For Windows 10 and later, this artifact should be considered an “evidence of presence” or “evidence of existence” artifact
+# it can not be used to prove a binary executed.
+# The data within Shimcache is only written to disk uponreboot or shutdown. 
+# Unless you capture memory and attempt to extract Shimcache via a Volatility plugin (or other means), that data will not be available until the next reboot.
+# Use Shimcache to show that a file exists (or previously existed) in a given location. 
+# While it was previously considered to be an “evidence of execution” artifact prior to Windows 10, it would be best described as an “evidence of presence” or “evidence of existence” artifact.
+# The cache entry position can be used to show potential items of interest.
+# The lower the cache entry position number, the more recently that binary was shimmed.
+# Remember that if a file is renamed or moved, it will be re-shimmed. If file a.exe was at cache entry position 10, and file scvhost.exe was at cache entry position 5, and both files had the same 64-bit modification (M)
+# timestamp, you could say with high confidence that binary a.exe was renamed to scvhost.exe.
+# Context matters! Look for items of interest in close proximity to one
+# If you find a known malicious binary in the Shimcache, the cache entry positions just before and after that binary may reveal additional items of interest.
 
 
+### Get UserAssist
+# UserAssist records metadata on GUI-based program executions
+# Metadata is stored in the NTUSER.dat user-specific Registry hive and is ROT-13 encoded
+# GUIDs identify the type of execution (Win7+) CEBFF5CD - Executable File Execution F4E57C4B - Shortcut File Execution
+# Application path, last executed timestamp, run count, focus time, and focus count are recorded
+# The number of entries that can be saved in the UserAssist Registry key is limited by the size of the Registry
+# UserAssist may be able to show execution on Windows 10 and later via the Focus Time
+# For Windows 10 and later, this artifact can still be used to prove execution, but attention needs to beon the Focus Time, NOT the Run Count
+# For Windows 10 and later, right clicking an application on the Start Menu and selecting “Open file location” will cause an entry to be created/ updated in UserAssist for the Executable file execution type. 
+# This action does not cause a binary to execute but does cause the Run Count to increaseand the Last Executed timestamp to update.
+# However, the Focus Time will NOT be updated.
+# The Run Count and Last Execution Time can be manipulated as mentioned above, so do NOT use itto prove how many times a program executed or when it last executed.
+# Use UserAssist to prove that a binary was executed by looking at the Focus Time beinggreater than zero (0). Keep in mind that certain binaries are executed without user interaction.
+# When UserAssist entries are seen for Snipping Tool.lnk and Paint.lnk for a single user with the same Last Executed timestamp, this is indicative that an interactive session likely occurred for that user 
+# for the first time ~100 seconds after the specified timestamp. This does not apply for Windows 11.
+# UserAssist entries will not be created for certain binaries if execution was done through a web browser’s downloads dialog
 
 "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
 "RECENT ITEMS: ******************************"  | Tee-Object -FilePath $GlobalOutputFile -Append
