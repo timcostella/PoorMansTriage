@@ -1,8 +1,8 @@
 ### Poor Man's Triage
-### Version: 0.5.9
+### Version: 0.6.2
 ### Created: 08/04/2022
 ### Created By: Tim Costella
-### Last Revised: 06/13/2026
+### Last Revised: 06/23/2026
 
 ## Check if running as an admin, alot of the functionality requrires running as admin
 #Requires -RunASAdministrator
@@ -575,17 +575,23 @@ $PrefechItems | Out-File -FilePath $GlobalOutputFile -Append
                         $DateFormat =  $InstallDate.ToUniversalTime().ToString("yyyy.MM.dd-HH.mm.ss")
                         $PathToShadowCopy = "\\localhost\C$\@GMT-$DateFormat"
 
-                        "Copying from $PathToShadowCopy\Windows\AppCompat\Programs\Amcache.hve to $WorkingDirectory"  | Out-File -FilePath $GlobalOutputFile -Append
-                        Copy-Item -Path "$PathToShadowCopy\Windows\AppCompat\Programs\Amcache.hve" -Destination "$WorkingDirectory\"
+                        "Copying from $PathToShadowCopy\Windows\AppCompat\Programs\Amcache.* to $WorkingDirectory"  | Out-File -FilePath $GlobalOutputFile -Append
+                        Copy-Item -Path "$PathToShadowCopy\Windows\AppCompat\Programs\*" -Recurse -Destination "$WorkingDirectory\"
 
                         if (Test-Path "$WorkingDirectory\Amcache.hve")
                             {
-                                "Copied Amcache.hve to $WorkingDirectory"  | Out-File -FilePath $GlobalOutputFile -Append
+                                "Copied Amcache.hve and logs to $WorkingDirectory"  | Out-File -FilePath $GlobalOutputFile -Append
+
+                                if ( Get-ChildItem -Path "$WorkingDirectory\" -Force -Filter *hve* | Measure-Object | Select-Object -ExpandProperty Count -gt 2)
+                                    {
+                                        reg load HKLM\AmcacheTemp $WorkingDirectory\Amcache.hve
+
+                                    } 
                                 # Clean up the shadow copy?
                                 "Shadow Copy Clean Up"  | Out-File -FilePath $GlobalOutputFile -Append
                                 Get-CimInstance win32_shadowcopy | Where-Object -Property ID -eq $ShadowCopyID | Remove-CimInstance
 
-                                
+
                             }
 
                         
