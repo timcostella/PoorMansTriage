@@ -570,8 +570,13 @@ $PrefechItems | Out-File -FilePath $GlobalOutputFile -Append
                         $DateFormat =  $InstallDate.ToUniversalTime().ToString("yyyy.MM.dd-HH.mm.ss")
                         $PathToShadowCopy = "\\localhost\C$\@GMT-$DateFormat"
                         Copy-Item -Path "$PathToShadowCopy\Windows\AppCompat\Programs\Amcache.hve" -Destination "$WorkingDirectory\Amcache.hve"
+                        if (Test-Path "$WorkingDirectory\Amcache.hve")
+                            {
+                                # Clean up the shadow copy?
+                                Get-CimInstance win32_shadowcopy | Where-Object -Property ID -eq $ShadowCopyID | remove-ciminstance
+                            }
 
-                        # Clean up the shadow copy?
+                        
 
                     }
                 
