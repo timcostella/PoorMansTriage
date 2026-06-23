@@ -521,8 +521,11 @@ Get-PowerShellHistory
 $PrefechItems = Get-ChildItem C:\Windows\Prefetch | Sort-Object -Property LastWriteTime -Descending  
 $PrefechItems | Out-File -FilePath $GlobalOutputFile -Append
 
+
+
 ### Get the AmCache 
-# AmCache’s contribution to forensic investigations: The AmCache registry hive’s role in storing information about executed and installed applications is crucial, yet it’s often mistakenly believed to capture every execution event. 
+# AmCache’s contribution to forensic investigations: 
+# The AmCache registry hive’s role in storing information about executed and installed applications is crucial, yet it’s often mistakenly believed to capture every execution event. 
 # This misunderstanding can lead to significant gaps in forensic narratives, particularly where malware employs evasion techniques. 
 # Moreover, the lack of execution timestamp specificity in AmCache data further complicates accurate timeline reconstruction.
 # https://www.microsoft.com/en-us/security/blog/2024/04/23/new-microsoft-incident-response-guide-helps-simplify-cyberthreat-investigations/
@@ -535,6 +538,50 @@ $PrefechItems | Out-File -FilePath $GlobalOutputFile -Append
 
 # AmCache should be considered an “evidence of presence” or “evidence of existence” artifact – it cannot be used to prove a binary executed
 # Use AmCache to show that a file exists (or previously existed) in a given location
+
+# I believe we need to make a shadow copy because we can't access the Amcache.hve live
+ $ShadowCopies = get-CimInstance Win32_ShadowCopy | Select-Object @{Name='Created' ;Expression={$_.ConvertToDateTime($_.InstallDate)}}, ID, DeviceObject
+ 
+ if ($ShadowCopies -eq $null)
+    {
+        # Check free space to see if there is room for a shadow copy on the C:
+        $C_DisksObj = Get-CimInstance -ClassName Win32_LogicalDisk |  Where-Object -Property DeviceID -eq "C:"
+
+        # Free space as percentage of disk size
+        $FreeSpacePercent = [Math]::Round(($C_DisksObj.FreeSpace / $C_DisksObj.Size), 2)
+
+        # Free space in GBs
+        $FreeSpaceGB = [Math]::Round($C_DisksObj.FreeSpace / 1Gb, 2)
+
+        if ($FreeSpacePercent -gt .1 -or $FreeSpaceGB -gt 4)
+            {
+                # Create a Shadow Copy
+                $Create_ShadowCopy = Invoke-CimMethod -ClassName Win32_ShadowCopy -MethodName Create -Arguments @{ Volume = "C:\" }
+
+                # If shadow copy created successfully
+                if ($Create_ShadowCopy.ReturnValue -eq 0)
+                    {
+                        $ShadowCopyID = $Create_ShadowCopy.ShadowID
+
+                        # $PathToShadowCopy = get-CimInstance Win32_ShadowCopy | Where-Object -Property ID -eq $ShadowCopyID | Select-Object -Property DeviceObject
+                        
+                        # Browse the shadow copy using the \\localhost\C$\@GMT-2026.06.23-11.00.37 format
+                        $InstallDate = get-CimInstance Win32_ShadowCopy | Where-Object -Property ID -eq $ShadowCopyID | Select-Object -ExpandProperty InstallDate
+                        $DateFormat =  $InstallDate.ToUniversalTime().ToString("yyyy.MM.dd-HH.mm.ss")
+                        $PathToShadowCopy = "\\localhost\C$\@GMT-$DateFormat"
+                        Copy-Item -Path "$PathToShadowCopy\Windows\AppCompat\Programs\Amcache.hve" -Destination "$WorkingDirectory\Amcache.hve"
+
+                        # Clean up the shadow copy?
+
+                    }
+                
+               
+            }
+
+        # Remove the Shadow Copy we made
+        $Id = "{CEE28F31-3258-4379-A3B9-C9316E623309}"
+        $ShadowCopyRemove = Get-CimInstance win32_shadowcopy | Where-Object -Property Id -eq $Id | Remove-CimInstance
+    }
 
 
 
