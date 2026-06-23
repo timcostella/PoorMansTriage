@@ -524,6 +524,8 @@ $PrefechItems | Out-File -FilePath $GlobalOutputFile -Append
 
 
 ### Get the AmCache 
+"`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
+"GETTING AmCache File: ******************************"  | Out-File -FilePath $GlobalOutputFile -Append
 # AmCache’s contribution to forensic investigations: 
 # The AmCache registry hive’s role in storing information about executed and installed applications is crucial, yet it’s often mistakenly believed to capture every execution event. 
 # This misunderstanding can lead to significant gaps in forensic narratives, particularly where malware employs evasion techniques. 
@@ -534,12 +536,13 @@ $PrefechItems | Out-File -FilePath $GlobalOutputFile -Append
 # Tracks application files, executed programs, driver binaries, PnP devices, driver packages, device containers, and application shortcuts from Windows 10+ systems
 # Executable file name, file path, SHA1 hash, metadata and timestamps are recorded
 # The SHA1 hash in AmCache is only calculated for the first 31,457,280 bytes (30 MB) of large files
-# Stored in a separate file named Amcache.hve within %SYSTEMROOT%\appcompat\Program
+# Stored in a separate file named Amcache.hve within %SYSTEMROOT%\appcompat\Programs
 
 # AmCache should be considered an “evidence of presence” or “evidence of existence” artifact – it cannot be used to prove a binary executed
 # Use AmCache to show that a file exists (or previously existed) in a given location
 
 # I believe we need to make a shadow copy because we can't access the Amcache.hve live
+"Checking for Shadow Copies"  | Out-File -FilePath $GlobalOutputFile -Append
  $ShadowCopies = get-CimInstance Win32_ShadowCopy | Select-Object @{Name='Created' ;Expression={$_.ConvertToDateTime($_.InstallDate)}}, ID, DeviceObject
  
  if ($ShadowCopies -eq $null)
@@ -556,11 +559,13 @@ $PrefechItems | Out-File -FilePath $GlobalOutputFile -Append
         if ($FreeSpacePercent -gt .1 -or $FreeSpaceGB -gt 4)
             {
                 # Create a Shadow Copy
+                "Creating A Shadow Copy"  | Out-File -FilePath $GlobalOutputFile -Append
                 $Create_ShadowCopy = Invoke-CimMethod -ClassName Win32_ShadowCopy -MethodName Create -Arguments @{ Volume = "C:\" }
 
                 # If shadow copy created successfully
                 if ($Create_ShadowCopy.ReturnValue -eq 0)
                     {
+                        "Shadow Copy Created Successfully"  | Out-File -FilePath $GlobalOutputFile -Append
                         $ShadowCopyID = $Create_ShadowCopy.ShadowID
 
                         # $PathToShadowCopy = get-CimInstance Win32_ShadowCopy | Where-Object -Property ID -eq $ShadowCopyID | Select-Object -Property DeviceObject
@@ -569,11 +574,18 @@ $PrefechItems | Out-File -FilePath $GlobalOutputFile -Append
                         $InstallDate = get-CimInstance Win32_ShadowCopy | Where-Object -Property ID -eq $ShadowCopyID | Select-Object -ExpandProperty InstallDate
                         $DateFormat =  $InstallDate.ToUniversalTime().ToString("yyyy.MM.dd-HH.mm.ss")
                         $PathToShadowCopy = "\\localhost\C$\@GMT-$DateFormat"
-                        Copy-Item -Path "$PathToShadowCopy\Windows\AppCompat\Programs\Amcache.hve" -Destination "$WorkingDirectory\Amcache.hve"
+
+                        "Copying from $PathToShadowCopy\Windows\AppCompat\Programs\Amcache.hve to $WorkingDirectory"  | Out-File -FilePath $GlobalOutputFile -Append
+                        Copy-Item -Path "$PathToShadowCopy\Windows\AppCompat\Programs\Amcache.hve" -Destination "$WorkingDirectory\"
+
                         if (Test-Path "$WorkingDirectory\Amcache.hve")
                             {
+                                "Copied Amcache.hve to $WorkingDirectory"  | Out-File -FilePath $GlobalOutputFile -Append
                                 # Clean up the shadow copy?
-                                Get-CimInstance win32_shadowcopy | Where-Object -Property ID -eq $ShadowCopyID | remove-ciminstance
+                                "Shadow Copy Clean Up"  | Out-File -FilePath $GlobalOutputFile -Append
+                                Get-CimInstance win32_shadowcopy | Where-Object -Property ID -eq $ShadowCopyID | Remove-CimInstance
+
+                                
                             }
 
                         
@@ -583,9 +595,6 @@ $PrefechItems | Out-File -FilePath $GlobalOutputFile -Append
                
             }
 
-        # Remove the Shadow Copy we made
-        $Id = "{CEE28F31-3258-4379-A3B9-C9316E623309}"
-        $ShadowCopyRemove = Get-CimInstance win32_shadowcopy | Where-Object -Property Id -eq $Id | Remove-CimInstance
     }
 
 
