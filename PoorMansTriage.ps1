@@ -584,8 +584,38 @@ $PrefechItems | Out-File -FilePath $GlobalOutputFile -Append
 
                                 if ( Get-ChildItem -Path "$WorkingDirectory\" -Force -Filter *hve* | Measure-Object | Select-Object -ExpandProperty Count -gt 2)
                                     {
+                                        "Loading Amcache.hve to the registry"  | Out-File -FilePath $GlobalOutputFile -Append
                                         reg load HKLM\AmcacheTemp $WorkingDirectory\Amcache.hve
 
+                                        $Apps = get-ChildItem "HKLM:\AmcacheTemp\Root\InventoryApplication\"
+
+                                        "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
+                                        "GETTING App Inventory from AmCache InventoryApplication Key: ******************************"  | Out-File -FilePath $GlobalOutputFile -Append
+                                        
+                                        $AppObjArray = @()
+                                        Foreach ($App in $Apps)
+                                            {
+                                                $AppObject = New-Object -TypeName psobject
+                                                ForEach ($Prop in $App.Property)
+                                                    {  
+                                                        $Name = $Prop
+                                                        $Value = Get-ItemProperty -Path $App.PSPath -Name $Prop | Select-Object -ExpandProperty $Prop
+                                                        if ($Value.length -gt 1)
+                                                            {
+                                                                 Write-Output "$Name - $Value"
+                                                            }
+
+                                                        $AppObject | Add-Member -MemberType NoteProperty -Name $Prop -Value $Value
+                                                    }
+
+                                                $AppObjArray += $AppObject
+
+                                                "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
+                                                "******************************"  | Out-File -FilePath $GlobalOutputFile -Append
+                                            }
+                                        
+                                        $AppObjArray | Export-Csv -Path "$WorkingDirectory\AmCache-AppInventory.csv" -IncludeTypeInformation $false
+                                        
                                     } 
                                 # Clean up the shadow copy?
                                 "Shadow Copy Clean Up"  | Out-File -FilePath $GlobalOutputFile -Append
@@ -593,9 +623,7 @@ $PrefechItems | Out-File -FilePath $GlobalOutputFile -Append
 
 
                             }
-
-                        
-
+                      
                     }
                 
                
