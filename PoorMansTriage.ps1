@@ -517,12 +517,13 @@ Get-PowerShellHistory
 # If the same executable was run with different command line options, or the executable was moved and then run again, this essentially means there will be more than one prefetch entry for it.
 
 "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
-"WINDOWS PREFETCH ITEMS: ******************************"  | Out-File -FilePath $GlobalOutputFile -Append
-$PrefechItems = Get-ChildItem C:\Windows\Prefetch | Sort-Object -Property LastWriteTime -Descending  
-$PrefechItems | Out-File -FilePath $GlobalOutputFile -Append
+"WINDOWS PREFETCH ITEMS: ******************************"  | Tee-Object -FilePath $GlobalOutputFile -Append
+$PrefechItems = Get-ChildItem C:\Windows\Prefetch | Sort-Object -Property LastWriteTime -Descending 
+$PrefetchItems | Select-Object -Property Name, CreationTimeUtc, LastWriteTimeUtc | Tee-Object -FilePath $GlobalOutputFile -Append
+$PrefechItems | Select-Object -Property * | Export-CSV -Path "$WorkingDirectory\Prefetch.csv"
 
 
-
+<#
 ### Get the AmCache 
 "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
 "GETTING AmCache File: ******************************"  | Out-File -FilePath $GlobalOutputFile -Append
@@ -636,7 +637,7 @@ $PrefechItems | Out-File -FilePath $GlobalOutputFile -Append
 
     }
 
-<#
+
 
 ### Get Recent Items (.lnk files)
 ### Recent Items are shortcuts to recently accessed files, folders, and websites. They are stored in the Recent Items folder located at %APPDATA%\Microsoft\Windows\Recent.
