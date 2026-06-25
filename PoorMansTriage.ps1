@@ -543,7 +543,7 @@ $PrefechItems | Out-File -FilePath $GlobalOutputFile -Append
 
 # I believe we need to make a shadow copy because we can't access the Amcache.hve live
 "Checking for Shadow Copies"  | Out-File -FilePath $GlobalOutputFile -Append
- $ShadowCopies = get-CimInstance Win32_ShadowCopy | Select-Object @{Name='Created' ;Expression={$_.ConvertToDateTime($_.InstallDate)}}, ID, DeviceObject
+ $ShadowCopies = get-CimInstance Win32_ShadowCopy | Select-Object @{Name='Created';Expression={$_.ConvertToDateTime($_.InstallDate)}}, ID, DeviceObject
  
  if ($ShadowCopies -eq $null)
     {
@@ -582,39 +582,40 @@ $PrefechItems | Out-File -FilePath $GlobalOutputFile -Append
                             {
                                 "Copied Amcache.hve and logs to $WorkingDirectory"  | Out-File -FilePath $GlobalOutputFile -Append
 
-                                if ( Get-ChildItem -Path "$WorkingDirectory\" -Force -Filter *hve* | Measure-Object | Select-Object -ExpandProperty Count -gt 2)
+                                if ( (Get-ChildItem -Path "$WorkingDirectory\" -Force -Filter *hve* | Measure-Object | Select-Object -ExpandProperty Count) -gt 2)
                                     {
+                                        $AmcacheTempPath = "AmcacheTemp3"
                                         "Loading Amcache.hve to the registry"  | Out-File -FilePath $GlobalOutputFile -Append
-                                        reg load HKLM\AmcacheTemp $WorkingDirectory\Amcache.hve
+                                        reg load HKLM\$AmcacheTempPath $WorkingDirectory\Amcache.hve
 
-                                        $Apps = get-ChildItem "HKLM:\AmcacheTemp\Root\InventoryApplication\"
+                                        $RegKeys = get-ChildItem HKLM:\$AmcacheTempPath\Root\ | Select-Object -ExpandProperty PSPath
 
-                                        "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
-                                        "GETTING App Inventory from AmCache InventoryApplication Key: ******************************"  | Out-File -FilePath $GlobalOutputFile -Append
-                                        
-                                        $AppObjArray = @()
-                                        Foreach ($App in $Apps)
+                                        Foreach ($RegKey in $RegKeys)
                                             {
-                                                $AppObject = New-Object -TypeName psobject
-                                                ForEach ($Prop in $App.Property)
-                                                    {  
-                                                        $Name = $Prop
-                                                        $Value = Get-ItemProperty -Path $App.PSPath -Name $Prop | Select-Object -ExpandProperty $Prop
-                                                        if ($Value.length -gt 1)
-                                                            {
-                                                                 Write-Output "$Name - $Value"
+                                                "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
+                                                "Reading From Key: $RegKey ******************************"  | Out-File -FilePath $GlobalOutputFile -Append
+                                                $SubKeyObjArray = @()
+
+                                                $SubKeys = get-ChildItem -Path $RegKey
+
+                                                Foreach ($Subkey in $SubKeys)
+                                                    {
+                                                        "Reading From Subkey: $Subkey ******************************"  | Out-File -FilePath $GlobalOutputFile -Append
+                                                        $SubKeyObject = New-Object -TypeName psobject
+                                                        ForEach ($Prop in $Subkey.Property)
+                                                            {  
+                                                                $Name = $Prop
+                                                                $Value = Get-ItemProperty -Path $Subkey.PSPath -Name $Prop | Select-Object -ExpandProperty $Prop
+                                                                $SubKeyObject | Add-Member -MemberType NoteProperty -Name $Prop -Value $Value
                                                             }
 
-                                                        $AppObject | Add-Member -MemberType NoteProperty -Name $Prop -Value $Value
+                                                        $SubKeyObjArray += $SubKeyObject
                                                     }
-
-                                                $AppObjArray += $AppObject
-
-                                                "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
-                                                "******************************"  | Out-File -FilePath $GlobalOutputFile -Append
-                                            }
                                         
-                                        $AppObjArray | Export-Csv -Path "$WorkingDirectory\AmCache-AppInventory.csv" -IncludeTypeInformation $false
+                                                $ShortKeyName = $RegKey.Substring($RegKey.LastIndexOf("\") + 1)
+                                                $SubKeyObjArray | Export-Csv -Path "$WorkingDirectory\AmCache-$ShortKeyName.csv"
+
+                                            }
                                         
                                     } 
                                 # Clean up the shadow copy?
@@ -628,10 +629,14 @@ $PrefechItems | Out-File -FilePath $GlobalOutputFile -Append
                 
                
             }
+        else 
+            {
+                "Too Little Free Space To Create A Shadow Copy - Can't Process Amcache.hve"  | Out-File -FilePath $GlobalOutputFile -Append
+            }
 
     }
 
-
+<#
 
 ### Get Recent Items (.lnk files)
 ### Recent Items are shortcuts to recently accessed files, folders, and websites. They are stored in the Recent Items folder located at %APPDATA%\Microsoft\Windows\Recent.
@@ -1352,3 +1357,5 @@ if(Test-Path -Path $ZippedOutputPath)
 "SCRIPT COMPLETE:*************************"  | Tee-Object -FilePath $GlobalOutputFile -Append
 $FileDate = Get-Date -Format "MM/dd/yy hh:mm:ss tt"
 "COMPLETED AT: $FileDate $TimeZone"    | Tee-Object -FilePath $GlobalOutputFile -Append
+
+#>
