@@ -520,7 +520,7 @@ Get-PowerShellHistory
 "WINDOWS PREFETCH ITEMS: ******************************"  | Tee-Object -FilePath $GlobalOutputFile -Append
 $PrefechItems = Get-ChildItem C:\Windows\Prefetch | Sort-Object -Property LastWriteTime -Descending 
 $PrefetchItems | Select-Object -Property Name, CreationTimeUtc, LastWriteTimeUtc | Tee-Object -FilePath $GlobalOutputFile -Append
-$PrefechItems | Select-Object -Property * | Export-CSV -Path "$WorkingDirectory\Prefetch.csv"
+$PrefechItems | Select-Object -Property * | Export-CSV -Path "$WorkingDirectory\$env:ComputerName-$DNSDomain-$FileNameDate-Triage-Prefetch.csv"
 
 
 <#
@@ -614,7 +614,7 @@ $PrefechItems | Select-Object -Property * | Export-CSV -Path "$WorkingDirectory\
                                                     }
                                         
                                                 $ShortKeyName = $RegKey.Substring($RegKey.LastIndexOf("\") + 1)
-                                                $SubKeyObjArray | Export-Csv -Path "$WorkingDirectory\AmCache-$ShortKeyName.csv"
+                                                $SubKeyObjArray | Export-Csv -Path "$WorkingDirectory\$env:ComputerName-$DNSDomain-$FileNameDate-Triage-AmCache-$ShortKeyName.csv"
 
                                             }
                                         
@@ -638,6 +638,7 @@ $PrefechItems | Select-Object -Property * | Export-CSV -Path "$WorkingDirectory\
     }
 
 
+#>
 
 ### Get Recent Items (.lnk files)
 ### Recent Items are shortcuts to recently accessed files, folders, and websites. They are stored in the Recent Items folder located at %APPDATA%\Microsoft\Windows\Recent.
@@ -651,6 +652,13 @@ $PrefechItems | Select-Object -Property * | Export-CSV -Path "$WorkingDirectory\
 # The creation time of a Link file indicates the first time the target file was created
 # The modification time of a Link file indicates the last time the target file was opened
 # Other key metadata within a Link file includes target file path, file size, file attributes, origin system name, and origin volume information
+
+
+"`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
+"RECENT ITEMS: ******************************"  | Tee-Object -FilePath $GlobalOutputFile -Append
+$RecentItems = Get-ChildItem "$env:APPDATA\Microsoft\Windows\Recent" 
+$RecentItems | Select-Object -Property BaseName, CreationTimeUtc, LastAccessTimeUtc, LastWriteTimeUtc -Unique  | Sort-Object -Property LastWriteTimeUtc -Descending | Format-Table -AutoSize | Tee-Object -FilePath $GlobalOutputFile -Append
+$RecentItems | Select-Object -Property * |  Export-csv -Path "$WorkingDirectory\$env:ComputerName-$DNSDomain-$FileNameDate-Triage-RecentItems.csv" -Delimiter "," -NoTypeInformation
 
 # Jump Lists are located in: 
 #    %USERPROFILE%\AppData\Roaming\Microsoft\Windows\Recent\AutomaticDestinations
@@ -726,11 +734,6 @@ $PrefechItems | Select-Object -Property * | Export-CSV -Path "$WorkingDirectory\
 # for the first time ~100 seconds after the specified timestamp. This does not apply for Windows 11.
 # UserAssist entries will not be created for certain binaries if execution was done through a web browser’s downloads dialog
 
-"`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
-"RECENT ITEMS: ******************************"  | Tee-Object -FilePath $GlobalOutputFile -Append
-$RecentItems = Get-ChildItem "$env:APPDATA\Microsoft\Windows\Recent" 
-$RecentItems | Select-Object -Property BaseName, LastAccessTimeUtc -Unique  | Sort-Object -Property LastAccessTimeUtc | Format-Table -AutoSize | Tee-Object -FilePath $GlobalOutputFile -Append
-$RecentItems | Export-csv -Path "$WorkingDirectory\$env:ComputerName-$DNSDomain-$FileNameDate-Triage-RecentItems.csv" -Delimiter "," -NoTypeInformation
 
 
 ### Check if logs are enabled
@@ -796,7 +799,7 @@ Get-Item -Path "HKLM:\SYSTEM\MountedDevices\" | Select-Object -ExpandProperty Pr
 "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
 "USB DEVICES FROM REGISTRY: *********************"  | Tee-Object -FilePath $GlobalOutputFile -Append
 Get-ChildItem -Path "HKLM:\SYSTEM\ControlSet001\Enum\USBSTOR\" | Get-ChildItem | Get-ItemProperty -Name FriendlyName -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FriendlyName  | Sort-Object -Property FriendlyName | Tee-Object -FilePath $GlobalOutputFile -Append
-Start-Process -FilePath "C:\windows\System32\reg.exe" -ArgumentList "export HKLM\SYSTEM\ControlSet001\Enum\USBSTOR $WorkingDirectory\HKLM_USBSTOR.reg /y"
+Start-Process -FilePath "C:\windows\System32\reg.exe" -ArgumentList "export HKLM\SYSTEM\ControlSet001\Enum\USBSTOR $WorkingDirectory\$env:ComputerName-$DNSDomain-$FileNameDate-Triage-HKLM_USBSTOR.reg /y"
 
 ### Get Disk Info
 "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
@@ -877,7 +880,7 @@ $TCPConnections | Where-Object {$_.RemoteAddress -ne "0.0.0.0" -and $_.RemoteAdd
 "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
 "WIRELESS NETWORKS: ***************************" | Tee-Object -FilePath $GlobalOutputFile -Append
 Get-ChildItem -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles" | Get-ItemProperty -Name ProfileName, Description, DateLastConnected | Select-Object ProfileName, Description, DateLastConnected | Tee-Object -FilePath $GlobalOutputFile -Append
-Start-Process -FilePath "C:\windows\System32\reg.exe" -ArgumentList "export HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles $WorkingDirectory\HKLM_NetworkList_Profiles.reg /y"
+Start-Process -FilePath "C:\windows\System32\reg.exe" -ArgumentList "export HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles $WorkingDirectory\$env:ComputerName-$DNSDomain-$FileNameDate-Triage-HKLM_NetworkList_Profiles.reg /y"
 
 ### Get Windows Firewall Service Status
 "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
@@ -1069,7 +1072,7 @@ $AllRegKeys=@()
 $RegKeys = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" 
 $RegKeys | Tee-Object -FilePath $GlobalOutputFile -Append
 $AllRegKeys += $RegKeys
-Start-Process -FilePath "C:\windows\System32\reg.exe" -ArgumentList "export HKLM\Software\Microsoft\Windows\CurrentVersion\Run $WorkingDirectory\HKLM_Run.reg /y"
+Start-Process -FilePath "C:\windows\System32\reg.exe" -ArgumentList "export HKLM\Software\Microsoft\Windows\CurrentVersion\Run $WorkingDirectory\$env:ComputerName-$DNSDomain-$FileNameDate-Triage-HKLM_Run.reg /y"
 
 ###Get HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce\ Registry entries
 "`n`n" | Tee-Object -FilePath $GlobalOutputFile -Append
@@ -1077,7 +1080,7 @@ Start-Process -FilePath "C:\windows\System32\reg.exe" -ArgumentList "export HKLM
 $RegKeys = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce" 
 $RegKeys | Tee-Object -FilePath $GlobalOutputFile -Append
 $AllRegKeys += $RegKeys
-Start-Process -FilePath "C:\windows\System32\reg.exe" -ArgumentList "export HKLM\Software\Microsoft\Windows\CurrentVersion\RunOnce $WorkingDirectory\HKLM_RunOnce.reg /y"
+Start-Process -FilePath "C:\windows\System32\reg.exe" -ArgumentList "export HKLM\Software\Microsoft\Windows\CurrentVersion\RunOnce $WorkingDirectory\$env:ComputerName-$DNSDomain-$FileNameDate-Triage-HKLM_RunOnce.reg /y"
 
 ### Get HKU Registry entries
 
@@ -1131,7 +1134,7 @@ Foreach ($UserProfile in $UserProfiles)
                     $RegKeys | Tee-Object -FilePath $GlobalOutputFile -Append
                     $AllRunRegKeys += $RegKeys
                     #Export out the registry key
-                    Start-Process -FilePath "C:\windows\System32\reg.exe" -ArgumentList "export HKU\$($UserProfile.SID)\$InterestingRegKey $WorkingDirectory\$ShortName-$ShortKeyName.reg /y" -Wait
+                    Start-Process -FilePath "C:\windows\System32\reg.exe" -ArgumentList "export HKU\$($UserProfile.SID)\$InterestingRegKey $WorkingDirectory\$env:ComputerName-$DNSDomain-$FileNameDate-Triage-$ShortName-$ShortKeyName.reg /y" -Wait
                 }
             
         }
