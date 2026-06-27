@@ -638,7 +638,7 @@ $PrefechItems | Select-Object -Property * | Export-CSV -Path "$WorkingDirectory\
     }
 
 
-#>
+
 
 ### Get Recent Items (.lnk files)
 ### Recent Items are shortcuts to recently accessed files, folders, and websites. They are stored in the Recent Items folder located at %APPDATA%\Microsoft\Windows\Recent.
@@ -669,10 +669,16 @@ $RecentItems | Select-Object -Property * |  Export-csv -Path "$WorkingDirectory\
 # CustomDestinations contain application specific Jump Lists utilized by various applications for a specific purpose
 # AutomaticDestinations are in CDF format
 
+#>
+
 
 
 ### Get ShellBags
-# ShellBags are set of Registry keys which contain details about a user’s viewed folder; such as its size, position, and view preferences
+# ShellBags are set of Registry keys which contain details about a user’s viewed folder; such as its size, position, and view preferences'
+# HKCU\Software\Microsoft\Windows\Shell\BagMRU
+# HKCU\Software\Microsoft\Windows\Shell\Bags
+# HKCU\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\BagMRU
+# HKCU\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\Bags
 # A ShellBags entry is created for every newly explored folder, and it can provide historical evidence of directory access and traversal
 # ShellBags are user specific and are found within NTUSER.dat and UsrClass.dat user-specific Registry hives
 # ShellBags follow a hierarchy similar to Windows Explorer, with keys providing additional information
@@ -689,6 +695,121 @@ $RecentItems | Select-Object -Property * |  Export-csv -Path "$WorkingDirectory\
 # Existence of ShellBags indicates an interactive session was used, meaning first and/or last interacted timestamps can be used to identify a time period in which an interactive session was active
 # Use ShellBags when searching for evidence of data collection and/or staging
 # https://www.magnetforensics.com/blog/forensic-analysis-of-windows-shellbags/
+
+Function Enumerate_ShellBag
+{
+    [CmdletBinding()]
+        param(
+            [Parameter()]   
+            [string]$ShellBagPath    
+        )
+
+    $ShellBagSubKeys = Get-ChildItem $ShellBagPath
+    Write-Output "Number of children directories: $($ShellBagSubKeys.length)"
+
+    # Output the path of the current ShellBag
+    Write-Output "Shellbag Entry: $ShellBagPath"
+
+    # Iterate over the properties (registry keys in the folder, not subkey directories)
+    Foreach ($Prop in (Get-Item $ShellBagPath).Property)
+        {
+        
+            if ($Prop -match '^[0-9]$')
+                {
+                    Write-Output "Shellbag Path: $ShellBagPath"
+                    Write-Output "ShellbagEntry Property: $Prop"
+                    # $data = Get-ItemProperty $ShellBag.PSPath | Select-Object -ExpandProperty $Prop 
+                    $data = Get-ItemPropertyValue -Path $ShellBagPath -Name $Prop
+
+                    # The size of the shellbag (in bytes) is in the first two bytes (offset 00 - 01)
+                    # The size is in little endian format, reverse the offset 01 and 00
+                    $shellbag_size = $data | Format-Hex -Offset 00 -Count 2 | Select-Object -ExpandProperty HexBytes
+
+                    # The third byte (offset 02) is the type of shellbag
+                    $shellbag_type = $data | Format-Hex -Offset 02 -Count 1 | Select-Object -ExpandProperty HexBytes
+
+                    switch ( $shellbag_type) {
+                        "1F" {	
+                                write-output "Root folder (Desktop, This PC, etc.)"
+                                break
+                            }
+                        "2F" {
+                                Write-Output "Volume (drive letter)"
+                                $Volume_Hex = $data | Format-Hex -Offset 03 -Count 3 | Select-Object -ExpandProperty HexBytes
+                                $decimal_values =[System.Convert]::FromHexString($Volume_Hex.Replace(" ",""))
+                                $Volume = [System.Text.Encoding]::ASCII.GetString($decimal_values)
+                                Write-Output $Volume
+                                break
+                            }	
+                        "30" {
+                                Write-Output "Directory, with short name only"
+                                break
+                            }
+                        "31" {
+                                Write-Output "Directory, with long file name"
+                                break
+                            }
+                        "32" {
+                                Write-Output "File, with long file name"
+                                break
+
+                            }
+                        
+                        "4*" {
+                                Write-Output "Network share"
+                                break
+                            }
+
+                        "52" {
+                                Write-Output "ZIP / compressed folder"
+                                break
+                            }
+                        "61" {
+                                Write-Output "URI / Internet object (newer Windows)"
+                                break
+                            }
+                        "71" {
+                                Write-Output "Control Panel item"
+                                break
+                                
+                            }
+                        "74" {
+                                Write-Output "Network share"
+                                break
+                            }
+                        default {
+                                Write-Output "Type: $Shellbag_type"
+                                # The format-hex has an ascii property, so can go directly to ascii text
+                                $Volume = $data | Format-Hex -Offset 03 | Select-Object -ExpandProperty Ascii
+                                Write-Output $Volume
+                            }
+                    }
+                }
+            else 
+                {
+                    # Write-Output "Property: $($Prop)"
+                }
+        }
+    
+    Start-Sleep 5
+
+    Foreach ($ShellBagSubKey in $ShellBagSubKeys)
+        {
+            Write-Output "Enumerating: $($ShellBagSubKey.PSPath)"
+            Enumerate_ShellBag -ShellBagPath $ShellBagSubKey.PSPath
+        }
+        
+
+}
+
+# Get the root of the Shelbags
+$ShellBagRoot = 'HKCU:\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\BagMRU'
+
+Enumerate_ShellBag -ShellBagPath $ShellBagRoot
+
+
+
+<#
 
 ### Get Shimcache
 # Provides compatibility for older software running in newer versions of Windows
